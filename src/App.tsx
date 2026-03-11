@@ -1325,17 +1325,6 @@ export default function App() {
                 {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
                 Generate 10 Meal Ideas
               </button>
-
-              {mealIdeas.length > 0 && user && favorites.length > 0 && (
-                <div className="text-center pt-2">
-                  <button 
-                    onClick={pullFavorites}
-                    className="text-xs text-emerald-600 font-bold hover:underline"
-                  >
-                    Would you like me to pull some of your favorites?
-                  </button>
-                </div>
-              )}
             </div>
           </div>
 
@@ -1489,6 +1478,17 @@ export default function App() {
                     {isRegenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5 text-emerald-500" />}
                     Regenerate (Keep Selected)
                   </button>
+                  
+                  {user && favorites.length > 0 && (
+                    <div className="text-center mt-4">
+                      <button 
+                        onClick={pullFavorites}
+                        className="text-xs text-emerald-600 font-bold hover:underline"
+                      >
+                        Would you like me to pull some of your favorites?
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </section>
