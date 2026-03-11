@@ -33,12 +33,27 @@ import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 
 // Initialize Gemini
-const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
+const getGenAI = () => {
+  let apiKey = '';
+  try {
+    apiKey = process.env.GEMINI_API_KEY || '';
+  } catch (e) {
+    // process.env might not be available in some browser environments
+  }
+  
+  if (!apiKey) {
+    apiKey = import.meta.env.VITE_GEMINI_API_KEY || '';
+  }
+  
+  if (!apiKey) return null;
+  return new GoogleGenAI({ apiKey });
+};
 
 export default function App() {
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
 
   // State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -239,6 +254,68 @@ export default function App() {
     if (error) setError(error.message);
   };
 
+  const saveSettings = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    setError(null);
+    try {
+      const settings: AppData = {
+        inventory,
+        pantry,
+        sources,
+        shoppingSources,
+        allergies
+      };
+
+      const { error: upsertError } = await supabase
+        .from('user_settings')
+        .upsert({ 
+          user_id: user.id, 
+          settings,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+      if (upsertError) throw upsertError;
+    } catch (err) {
+      console.error('Error saving settings:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save settings');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const loadSettings = async (userId: string) => {
+    try {
+      const { data, error: fetchError } = await supabase
+        .from('user_settings')
+        .select('settings')
+        .eq('user_id', userId)
+        .single();
+
+      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "no rows found"
+        throw fetchError;
+      }
+
+      if (data?.settings) {
+        const s = data.settings as AppData;
+        setInventory(s.inventory || []);
+        setPantry(s.pantry || []);
+        setSources(s.sources || []);
+        setShoppingSources(s.shoppingSources || []);
+        setAllergies(s.allergies || []);
+      }
+    } catch (err) {
+      console.error('Error loading settings:', err);
+      // Don't set global error for background load, just log it
+    }
+  };
+
+  useEffect(() => {
+    if (user) {
+      loadSettings(user.id);
+    }
+  }, [user]);
+
   const quickAddSource = (name: string, url: string) => {
     if (sources.some(s => s.url === url)) return;
     setSources([...sources, { id: crypto.randomUUID(), name, url }]);
@@ -399,7 +476,8 @@ export default function App() {
     
     setError(null);
     try {
-      if (!process.env.GEMINI_API_KEY) {
+      const genAI = getGenAI();
+      if (!genAI) {
         throw new Error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
       }
 
@@ -444,7 +522,13 @@ export default function App() {
         }
       });
 
-      const newMeals = JSON.parse(response.text || '[]').map((m: any) => ({ ...m, id: crypto.randomUUID() }));
+      let jsonText = response.text || '[]';
+      // Clean up markdown code blocks if present
+      if (jsonText.includes('```')) {
+        jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
+      }
+
+      const newMeals = JSON.parse(jsonText).map((m: any) => ({ ...m, id: crypto.randomUUID() }));
       
       if (isRegen) {
         // Keep selected, replace unselected
@@ -456,7 +540,7 @@ export default function App() {
       }
     } catch (err) {
       console.error(err);
-      setError("Failed to generate meal ideas. Please check your API key and try again.");
+      setError(err instanceof Error ? err.message : "Failed to generate meal ideas. Please check your API key and try again.");
     } finally {
       setIsGenerating(false);
       setIsRegenerating(false);
@@ -1019,8 +1103,26 @@ export default function App() {
 
             {/* Actions Section */}
             <div className="space-y-4 pt-4">
+              {user ? (
+                <button
+                  onClick={saveSettings}
+                  disabled={isSaving}
+                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95"
+                >
+                  {isSaving ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
+                  Save Settings
+                </button>
+              ) : (
+                <p className="text-xs text-slate-500 font-medium px-1 italic">
+                  Sign in to save your settings to your account.
+                </p>
+              )}
+
               <p className="text-xs text-slate-500 font-medium px-1">
-                To save your settings (Pantry, Sources, Allergies, Etc.), export the .json file and import it next time.
+                {user 
+                  ? "You can also export your settings as a .json file for backup."
+                  : "To save your settings (Pantry, Sources, Allergies, Etc.), export the .json file and import it next time."
+                }
               </p>
               
               <div className="flex items-center gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
