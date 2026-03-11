@@ -27,12 +27,19 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
+import { supabase } from './lib/supabase';
 import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList, PantryItem, AppData } from './types';
+import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
+import { User } from '@supabase/supabase-js';
 
 // Initialize Gemini
 const genAI = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || '' });
 
 export default function App() {
+  // Auth State
+  const [user, setUser] = useState<User | null>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState(true);
+
   // State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [pantry, setPantry] = useState<PantryItem[]>([]);
@@ -72,7 +79,72 @@ export default function App() {
   const [newShopName, setNewShopName] = useState('');
   const [newAllergy, setNewAllergy] = useState('');
 
-  // Local Storage Persistence
+  // Supabase Auth Listener
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user ?? null);
+      setIsAuthLoading(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // Sync Data with Supabase
+  useEffect(() => {
+    if (!user) return;
+
+    const fetchData = async () => {
+      const { data, error } = await supabase
+        .from('user_data')
+        .select('*')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error && error.code !== 'PGRST116') {
+        console.error('Error fetching user data:', error);
+        return;
+      }
+
+      if (data) {
+        if (data.inventory) setInventory(data.inventory);
+        if (data.pantry) setPantry(data.pantry);
+        if (data.sources) setSources(data.sources);
+        if (data.shopping_sources) setShoppingSources(data.shopping_sources);
+        if (data.allergies) setAllergies(data.allergies);
+      }
+    };
+
+    fetchData();
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    const saveData = async () => {
+      const { error } = await supabase
+        .from('user_data')
+        .upsert({
+          user_id: user.id,
+          inventory,
+          pantry,
+          sources,
+          shopping_sources: shoppingSources,
+          allergies,
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+
+      if (error) console.error('Error saving user data:', error);
+    };
+
+    const timeoutId = setTimeout(saveData, 1000);
+    return () => clearTimeout(timeoutId);
+  }, [user, inventory, pantry, sources, shoppingSources, allergies]);
+
+  // Local Storage Persistence (Fallback/Initial)
   useEffect(() => {
     const savedInventory = localStorage.getItem('mealwise_inventory');
     const savedPantry = localStorage.getItem('mealwise_pantry');
@@ -146,6 +218,21 @@ export default function App() {
 
   const removeAllergy = (id: string) => {
     setAllergies(allergies.filter(a => a.id !== id));
+  };
+
+  const handleSignIn = async () => {
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: window.location.origin
+      }
+    });
+    if (error) setError(error.message);
+  };
+
+  const handleSignOut = async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) setError(error.message);
   };
 
   const quickAddSource = (name: string, url: string) => {
@@ -308,6 +395,10 @@ export default function App() {
     
     setError(null);
     try {
+      if (!process.env.GEMINI_API_KEY) {
+        throw new Error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
+      }
+
       const model = "gemini-3-flash-preview";
       const prompt = getMealPrompt();
 
@@ -547,6 +638,38 @@ export default function App() {
               Quick Planner 3000
             </h1>
             <p className="text-slate-500 mt-1">Plan Smarter not Harder.</p>
+          </div>
+
+          <div className="flex items-center gap-3">
+            {isAuthLoading ? (
+              <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
+            ) : user ? (
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200">
+                  {user.user_metadata.avatar_url ? (
+                    <img src={user.user_metadata.avatar_url} alt="" className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
+                  ) : (
+                    <UserIcon className="w-4 h-4 text-slate-500" />
+                  )}
+                  <span className="text-sm font-medium text-slate-700">{user.email}</span>
+                </div>
+                <button
+                  onClick={handleSignOut}
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Sign Out
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleSignIn}
+                className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-all shadow-sm"
+              >
+                <LogIn className="w-4 h-4" />
+                Sign In with Google
+              </button>
+            )}
           </div>
         </header>
 
