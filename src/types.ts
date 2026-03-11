@@ -33,10 +33,13 @@ export interface MealIdea {
   ingredients: { name: string; amount: string }[];
   sourceUrl?: string;
   estimatedCost: number;
+  prepTime: string;
+  cookTime: string;
+  instructions: string[];
 }
 
 export interface ShoppingList {
-  toBuy: { name: string; amount: string }[];
+  toBuy: { name: string; amount: string; meals: string[] }[];
   fromInventory: { name: string; amount: string }[];
   totalEstimatedCost: number;
 }
