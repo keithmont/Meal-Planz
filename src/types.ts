@@ -51,3 +51,14 @@ export interface AppData {
   shoppingSources: ShoppingSource[];
   allergies: Allergy[];
 }
+
+export interface FavoriteMeal extends MealIdea {
+  user_id: string;
+  created_at: string;
+}
+
+export interface MealPlanItem extends MealIdea {
+  user_id: string;
+  planned_at: string;
+  is_current: boolean;
+}

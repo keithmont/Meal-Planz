@@ -23,12 +23,17 @@ import {
   CookingPot,
   Eye,
   Mail,
-  X
+  X,
+  Star,
+  History,
+  Heart,
+  Home,
+  Calendar
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
 import { supabase, isSupabaseConfigured } from './lib/supabase';
-import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList, PantryItem, AppData } from './types';
+import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList, PantryItem, AppData, FavoriteMeal, MealPlanItem } from './types';
 import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 
@@ -54,6 +59,7 @@ export default function App() {
   const [user, setUser] = useState<User | null>(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [activePage, setActivePage] = useState<'home' | 'favorites' | 'meal-plan'>('home');
 
   // State
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
@@ -62,6 +68,8 @@ export default function App() {
   const [shoppingSources, setShoppingSources] = useState<ShoppingSource[]>([]);
   const [allergies, setAllergies] = useState<Allergy[]>([]);
   const [mealIdeas, setMealIdeas] = useState<MealIdea[]>([]);
+  const [favorites, setFavorites] = useState<FavoriteMeal[]>([]);
+  const [mealPlan, setMealPlan] = useState<MealPlanItem[]>([]);
   const [selectedMealIds, setSelectedMealIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
@@ -286,28 +294,153 @@ export default function App() {
 
   const loadSettings = async (userId: string) => {
     try {
-      const { data, error: fetchError } = await supabase
+      // Load Settings
+      const { data: settingsData, error: settingsError } = await supabase
         .from('user_settings')
         .select('settings')
         .eq('user_id', userId)
         .single();
 
-      if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 is "no rows found"
-        throw fetchError;
-      }
+      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
 
-      if (data?.settings) {
-        const s = data.settings as AppData;
+      if (settingsData?.settings) {
+        const s = settingsData.settings as AppData;
         setInventory(s.inventory || []);
         setPantry(s.pantry || []);
         setSources(s.sources || []);
         setShoppingSources(s.shoppingSources || []);
         setAllergies(s.allergies || []);
       }
+
+      // Load Favorites
+      const { data: favsData, error: favsError } = await supabase
+        .from('favorites')
+        .select('*')
+        .eq('user_id', userId);
+      
+      if (favsError) throw favsError;
+      setFavorites(favsData || []);
+
+      // Load Meal Plan
+      const { data: planData, error: planError } = await supabase
+        .from('meal_plans')
+        .select('*')
+        .eq('user_id', userId)
+        .order('planned_at', { ascending: false });
+      
+      if (planError) throw planError;
+      setMealPlan(planData || []);
+
     } catch (err) {
-      console.error('Error loading settings:', err);
-      // Don't set global error for background load, just log it
+      console.error('Error loading data:', err);
     }
+  };
+
+  const toggleFavorite = async (meal: MealIdea) => {
+    if (!user) {
+      setError("Please sign in to favorite meals.");
+      return;
+    }
+
+    const isFav = favorites.some(f => f.name === meal.name);
+    try {
+      if (isFav) {
+        const { error } = await supabase
+          .from('favorites')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('name', meal.name);
+        if (error) throw error;
+        setFavorites(favorites.filter(f => f.name !== meal.name));
+      } else {
+        const newFav: FavoriteMeal = {
+          ...meal,
+          user_id: user.id,
+          created_at: new Date().toISOString()
+        };
+        const { error } = await supabase
+          .from('favorites')
+          .insert(newFav);
+        if (error) throw error;
+        setFavorites([...favorites, newFav]);
+      }
+    } catch (err) {
+      console.error('Error toggling favorite:', err);
+      setError(err instanceof Error ? err.message : 'Failed to update favorites');
+    }
+  };
+
+  const saveMealPlan = async () => {
+    if (!user) {
+      setError("Please sign in to save your meal plan.");
+      return;
+    }
+
+    const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
+    if (selectedMeals.length === 0) {
+      setError("Please select at least one meal to save to your plan.");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // 1. Mark existing current meals as previous
+      const { error: updateError } = await supabase
+        .from('meal_plans')
+        .update({ is_current: false })
+        .eq('user_id', user.id)
+        .eq('is_current', true);
+      
+      if (updateError) throw updateError;
+
+      // 2. Insert new meals as current
+      const newPlanItems: MealPlanItem[] = selectedMeals.map(m => ({
+        ...m,
+        user_id: user.id,
+        planned_at: new Date().toISOString(),
+        is_current: true
+      }));
+
+      const { error: insertError } = await supabase
+        .from('meal_plans')
+        .insert(newPlanItems);
+      
+      if (insertError) throw insertError;
+
+      // Update local state
+      const updatedPlan = [
+        ...newPlanItems,
+        ...mealPlan.map(p => ({ ...p, is_current: false }))
+      ];
+      setMealPlan(updatedPlan);
+      
+      // Clear selection
+      setSelectedMealIds([]);
+      alert("Meal plan saved successfully!");
+    } catch (err) {
+      console.error('Error saving meal plan:', err);
+      setError(err instanceof Error ? err.message : 'Failed to save meal plan');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const pullFavorites = () => {
+    if (favorites.length === 0) return;
+    
+    // Pick up to 3 random favorites that aren't already in mealIdeas
+    const existingNames = new Set(mealIdeas.map(m => m.name));
+    const availableFavs = favorites.filter(f => !existingNames.has(f.name));
+    
+    if (availableFavs.length === 0) return;
+
+    const shuffled = [...availableFavs].sort(() => 0.5 - Math.random());
+    const selected = shuffled.slice(0, 3).map(f => ({
+      ...f,
+      id: crypto.randomUUID() // Give them new IDs for the current list
+    }));
+
+    setMealIdeas([...mealIdeas, ...selected]);
   };
 
   useEffect(() => {
@@ -761,6 +894,32 @@ export default function App() {
           </div>
         </header>
 
+        {user && (
+          <nav className="flex items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
+            <button
+              onClick={() => setActivePage('home')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${activePage === 'home' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Home className="w-4 h-4" />
+              Home
+            </button>
+            <button
+              onClick={() => setActivePage('meal-plan')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${activePage === 'meal-plan' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Calendar className="w-4 h-4" />
+              Meal Plan
+            </button>
+            <button
+              onClick={() => setActivePage('favorites')}
+              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${activePage === 'favorites' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+            >
+              <Heart className="w-4 h-4" />
+              Favorites
+            </button>
+          </nav>
+        )}
+
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center gap-3">
             <AlertTriangle className="w-5 h-5 shrink-0" />
@@ -768,7 +927,9 @@ export default function App() {
           </div>
         )}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <main>
+          {activePage === 'home' && (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Configuration */}
           <div className="space-y-6">
             {/* Inventory */}
@@ -1149,6 +1310,17 @@ export default function App() {
                 {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
                 Generate 10 Meal Ideas
               </button>
+
+              {mealIdeas.length > 0 && user && favorites.length > 0 && (
+                <div className="text-center pt-2">
+                  <button 
+                    onClick={pullFavorites}
+                    className="text-xs text-emerald-600 font-bold hover:underline"
+                  >
+                    Would you like me to pull some of your favorites?
+                  </button>
+                </div>
+              )}
             </div>
           </div>
 
@@ -1179,7 +1351,24 @@ export default function App() {
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div className="pr-6">
-                          <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
+                            {user && (
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleFavorite(meal);
+                                }}
+                                className={`p-1 rounded-full transition-colors ${
+                                  favorites.some(f => f.name === meal.name)
+                                    ? 'text-amber-500 hover:bg-amber-50'
+                                    : 'text-slate-300 hover:text-amber-400 hover:bg-slate-50'
+                                }`}
+                              >
+                                <Star className={`w-4 h-4 ${favorites.some(f => f.name === meal.name) ? 'fill-current' : ''}`} />
+                              </button>
+                            )}
+                          </div>
                           <div className="flex items-center gap-3 mt-1">
                             <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Est. ${meal.estimatedCost}</span>
                             <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
@@ -1386,13 +1575,25 @@ export default function App() {
                         <span className="text-[10px] text-slate-500 font-normal uppercase tracking-widest">(Ref. Grocery Sources)</span>
                       </div>
                     </div>
-                    <button 
-                      onClick={() => setIsEmailModalOpen(true)}
-                      className="bg-white text-slate-900 px-6 py-2 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
-                    >
-                      Email List
-                      <Mail className="w-4 h-4" />
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button 
+                        onClick={() => setIsEmailModalOpen(true)}
+                        className="bg-white text-slate-900 px-6 py-2 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+                      >
+                        Email List
+                        <Mail className="w-4 h-4" />
+                      </button>
+                      {user && (
+                        <button 
+                          onClick={saveMealPlan}
+                          disabled={isSaving}
+                          className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-emerald-500 transition-colors flex items-center justify-center gap-2"
+                        >
+                          Save Meal Plan
+                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
+                        </button>
+                      )}
+                    </div>
                   </div>
                   
                   {shoppingSources.length > 0 && (
@@ -1413,6 +1614,136 @@ export default function App() {
             )}
           </div>
         </div>
+      )}
+
+        {activePage === 'meal-plan' && (
+          <div className="space-y-12">
+            <section>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <Calendar className="w-6 h-6 text-emerald-600" />
+                  Current Week
+                </h2>
+                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                  {mealPlan.filter(m => m.is_current).length} Meals
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {mealPlan.filter(m => m.is_current).map((meal, i) => (
+                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
+                    <div className="flex justify-between items-start mb-4">
+                      <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
+                      <button
+                        onClick={() => toggleFavorite(meal)}
+                        className={`p-1 rounded-full transition-colors ${
+                          favorites.some(f => f.name === meal.name)
+                            ? 'text-amber-500 hover:bg-amber-50'
+                            : 'text-slate-300 hover:text-amber-400 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Star className={`w-4 h-4 ${favorites.some(f => f.name === meal.name) ? 'fill-current' : ''}`} />
+                      </button>
+                    </div>
+                    <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">${meal.estimatedCost}</span>
+                      <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        <Clock className="w-3 h-3" />
+                        {meal.prepTime} + {meal.cookTime}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {mealPlan.filter(m => m.is_current).length === 0 && (
+                  <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                    <p className="text-slate-400 italic">No meals planned for this week yet.</p>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <section>
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <History className="w-6 h-6 text-slate-400" />
+                  Previous Meals
+                </h2>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-75">
+                {mealPlan.filter(m => !m.is_current).map((meal, i) => (
+                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm grayscale-[0.5]">
+                    <h3 className="font-bold text-lg leading-tight mb-2">{meal.name}</h3>
+                    <p className="text-sm text-slate-500 line-clamp-2 mb-4">{meal.description}</p>
+                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">${meal.estimatedCost}</span>
+                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                        Planned: {new Date(meal.planned_at).toLocaleDateString()}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+                {mealPlan.filter(m => !m.is_current).length === 0 && (
+                  <p className="text-slate-400 italic px-4">No previous meals found.</p>
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {activePage === 'favorites' && (
+          <div className="space-y-8">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold flex items-center gap-2">
+                <Heart className="w-6 h-6 text-red-500 fill-current" />
+                Your Favorites
+              </h2>
+              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                {favorites.length} Saved
+              </span>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {favorites.map((meal, i) => (
+                <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                  <div className="flex justify-between items-start mb-4">
+                    <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
+                    <button
+                      onClick={() => toggleFavorite(meal)}
+                      className="p-1 rounded-full text-amber-500 hover:bg-amber-50 transition-colors"
+                    >
+                      <Star className="w-4 h-4 fill-current" />
+                    </button>
+                  </div>
+                  <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
+                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
+                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">${meal.estimatedCost}</span>
+                    <button 
+                      onClick={() => {
+                        setMealIdeas([meal, ...mealIdeas.filter(m => m.name !== meal.name)]);
+                        setActivePage('home');
+                      }}
+                      className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded font-bold uppercase tracking-wider hover:bg-emerald-100 transition-colors"
+                    >
+                      Add to Plan
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {favorites.length === 0 && (
+                <div className="col-span-full py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                  <Heart className="w-12 h-12 text-slate-200 mx-auto mb-4" />
+                  <p className="text-slate-400 italic">You haven't favorited any meals yet.</p>
+                  <button 
+                    onClick={() => setActivePage('home')}
+                    className="mt-4 text-emerald-600 font-bold hover:underline text-sm"
+                  >
+                    Go discover some meals
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+        </main>
       </div>
     </div>
   );
