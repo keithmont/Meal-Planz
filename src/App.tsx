@@ -353,20 +353,29 @@ export default function App() {
         if (error) throw error;
         setFavorites(favorites.filter(f => f.name !== meal.name));
       } else {
-        const newFav: FavoriteMeal = {
-          ...meal,
+        // Omit the client-side ID to let Supabase generate a database UUID
+        const { id, ...mealData } = meal;
+        const newFavData = {
+          ...mealData,
           user_id: user.id,
           created_at: new Date().toISOString()
         };
-        const { error } = await supabase
+        
+        const { data, error } = await supabase
           .from('favorites')
-          .insert(newFav);
+          .insert(newFavData)
+          .select()
+          .single();
+          
         if (error) throw error;
-        setFavorites([...favorites, newFav]);
+        if (data) {
+          setFavorites([...favorites, data as FavoriteMeal]);
+        }
       }
     } catch (err) {
       console.error('Error toggling favorite:', err);
-      setError(err instanceof Error ? err.message : 'Failed to update favorites');
+      const msg = err instanceof Error ? err.message : (err as any)?.message || 'Unknown error';
+      setError(`Failed to update favorites: ${msg}`);
     }
   };
 
@@ -393,23 +402,28 @@ export default function App() {
       
       if (updateError) throw updateError;
 
-      // 2. Insert new meals as current
-      const newPlanItems: MealPlanItem[] = selectedMeals.map(m => ({
-        ...m,
-        user_id: user.id,
-        planned_at: new Date().toISOString(),
-        is_current: true
-      }));
+      // 2. Insert new meals as current (omitting client-side IDs)
+      const newPlanItems = selectedMeals.map(m => {
+        const { id, ...mealData } = m;
+        return {
+          ...mealData,
+          user_id: user.id,
+          planned_at: new Date().toISOString(),
+          is_current: true
+        };
+      });
 
-      const { error: insertError } = await supabase
+      const { data, error: insertError } = await supabase
         .from('meal_plans')
-        .insert(newPlanItems);
+        .insert(newPlanItems)
+        .select();
       
       if (insertError) throw insertError;
 
-      // Update local state
+      // Update local state with the data returned from Supabase (which has the real IDs)
+      const savedItems = data as MealPlanItem[];
       const updatedPlan = [
-        ...newPlanItems,
+        ...savedItems,
         ...mealPlan.map(p => ({ ...p, is_current: false }))
       ];
       setMealPlan(updatedPlan);
@@ -419,7 +433,8 @@ export default function App() {
       alert("Meal plan saved successfully!");
     } catch (err) {
       console.error('Error saving meal plan:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save meal plan');
+      const msg = err instanceof Error ? err.message : (err as any)?.message || 'Unknown error';
+      setError(`Failed to save meal plan: ${msg}`);
     } finally {
       setIsSaving(false);
     }
