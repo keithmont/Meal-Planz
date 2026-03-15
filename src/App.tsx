@@ -101,6 +101,8 @@ export default function App() {
   const [newShopUrl, setNewShopUrl] = useState('');
   const [newShopName, setNewShopName] = useState('');
   const [newAllergy, setNewAllergy] = useState('');
+  const [zipCode, setZipCode] = useState('');
+  const [isSearchingStores, setIsSearchingStores] = useState(false);
 
   // Supabase Auth Listener
   useEffect(() => {
@@ -465,13 +467,59 @@ export default function App() {
   }, [user]);
 
   const quickAddSource = (name: string, url: string) => {
-    if (sources.some(s => s.url === url)) return;
-    setSources([...sources, { id: crypto.randomUUID(), name, url }]);
+    const exists = sources.find(s => s.url === url);
+    if (exists) {
+      setSources(sources.filter(s => s.url !== url));
+    } else {
+      setSources([...sources, { id: crypto.randomUUID(), name, url }]);
+    }
   };
 
-  const quickAddShoppingSource = (name: string, url: string) => {
-    if (shoppingSources.some(s => s.url === url)) return;
-    setShoppingSources([...shoppingSources, { id: crypto.randomUUID(), name, url }]);
+  const searchStores = async () => {
+    if (!zipCode.trim()) return;
+    setIsSearchingStores(true);
+    setError(null);
+    const ai = getGenAI();
+    if (!ai) {
+      setError("Gemini API key not found.");
+      setIsSearchingStores(false);
+      return;
+    }
+
+    try {
+      const response = await ai.models.generateContent({
+        model: "gemini-3-flash-preview",
+        contents: `Find 5 major grocery stores within a 5 mile radius of zip code ${zipCode}. For each store, find the direct URL to their weekly sales or circular page. Return the results as a JSON array of objects with "name" and "url" properties.`,
+        config: {
+          tools: [{ googleSearch: {} }],
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                name: { type: Type.STRING },
+                url: { type: Type.STRING }
+              },
+              required: ["name", "url"]
+            }
+          }
+        }
+      });
+
+      const results = JSON.parse(response.text);
+      const newSources = results.map((r: any) => ({
+        id: crypto.randomUUID(),
+        name: r.name,
+        url: r.url
+      }));
+      setShoppingSources(newSources);
+    } catch (err) {
+      console.error("Error searching stores:", err);
+      setError("Failed to find stores. Please try again.");
+    } finally {
+      setIsSearchingStores(false);
+    }
   };
 
   const exportData = () => {
@@ -605,12 +653,13 @@ export default function App() {
         3. CRITICAL: Reference the Shopping Sources (weekly sales) to suggest cost-effective meals. If a shopping source has a deal on a specific protein or vegetable, prioritize those.
         4. Avoid any ingredients listed in the allergies section.
         5. The estimatedCost should be the cost of ingredients I need to PURCHASE (not in Inventory/Pantry), leveraging the Shopping Sources for lower prices where possible.
+        6. For ingredients that are on sale at a specific store (based on the Shopping Sources provided), identify which store they are on sale at.
         
         For each meal, provide:
         1. A name
         2. A brief description
-        3. A list of ingredients with estimated amounts
-        4. A source URL if it relates to one of the provided recipe sources.
+        3. A list of ingredients with estimated amounts. For each ingredient, if it is on sale at one of the provided Shopping Sources, include the store name in a "onSaleAt" field.
+        4. A direct URL to the specific recipe (NOT an archive or home page) if it relates to one of the provided recipe sources.
         5. An estimatedCost (number) for the additional groceries needed for this meal (assuming 4 servings).
         6. prepTime (string, e.g. "15 min")
         7. cookTime (string, e.g. "30 min")
@@ -650,7 +699,8 @@ export default function App() {
                     type: Type.OBJECT,
                     properties: {
                       name: { type: Type.STRING },
-                      amount: { type: Type.STRING }
+                      amount: { type: Type.STRING },
+                      onSaleAt: { type: Type.STRING }
                     },
                     required: ["name", "amount"]
                   }
@@ -697,7 +747,7 @@ export default function App() {
 
   const shoppingList = useMemo((): ShoppingList => {
     const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
-    const toBuyMap = new Map<string, { amounts: string[]; meals: string[] }>();
+    const toBuyMap = new Map<string, { amounts: string[]; meals: string[]; onSaleAt?: string }>();
     const fromInventoryMap = new Map<string, string[]>();
     let totalEstimatedCost = 0;
 
@@ -722,9 +772,12 @@ export default function App() {
           fromInventoryMap.get(ing.name)?.push(ing.amount);
         } else {
           if (!toBuyMap.has(ing.name)) {
-            toBuyMap.set(ing.name, { amounts: [], meals: [] });
+            toBuyMap.set(ing.name, { amounts: [], meals: [], onSaleAt: ing.onSaleAt });
           }
           const entry = toBuyMap.get(ing.name)!;
+          if (!entry.onSaleAt && ing.onSaleAt) {
+            entry.onSaleAt = ing.onSaleAt;
+          }
           entry.amounts.push(ing.amount);
           if (!entry.meals.includes(meal.name)) {
             entry.meals.push(meal.name);
@@ -760,7 +813,8 @@ export default function App() {
     const toBuy = Array.from(toBuyMap.entries()).map(([name, entry]) => ({
       name,
       amount: combineAmounts(entry.amounts),
-      meals: entry.meals
+      meals: entry.meals,
+      onSaleAt: entry.onSaleAt
     }));
 
     const fromInventory = Array.from(fromInventoryMap.entries()).map(([name, amounts]) => ({
@@ -873,25 +927,25 @@ export default function App() {
               <UtensilsCrossed className="w-10 h-10 text-emerald-500" />
               Quick Planner 3000
             </h1>
-            <p className="text-slate-600 mt-1 font-bold uppercase tracking-widest text-xs">Plan Smarter not Harder.</p>
+            <p className="text-slate-600 mt-1 font-bold uppercase tracking-widest text-xs">Plan Smarter with Robots!</p>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center justify-center md:justify-end gap-3 w-full md:w-auto">
             {isAuthLoading ? (
               <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
             ) : user ? (
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-none border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
+              <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-none border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-full md:w-auto justify-center md:justify-start">
                   {user.user_metadata.avatar_url ? (
                     <img src={user.user_metadata.avatar_url} alt="" className="w-6 h-6 rounded-none" referrerPolicy="no-referrer" />
                   ) : (
                     <UserIcon className="w-4 h-4 text-slate-500" />
                   )}
-                  <span className="text-sm font-bold text-black">{user.email}</span>
+                  <span className="text-sm font-bold text-black truncate">{user.email}</span>
                 </div>
                 <button
                   onClick={handleSignOut}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-black hover:bg-red-500 hover:text-white border-2 border-black rounded-none transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                  className="flex items-center justify-center gap-2 px-4 py-2 text-sm font-bold text-black hover:bg-red-500 hover:text-white border-2 border-black rounded-none transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none w-full md:w-auto"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -900,7 +954,7 @@ export default function App() {
             ) : (
               <button
                 onClick={handleSignIn}
-                className="flex items-center gap-2 px-6 py-3 bg-black text-white rounded-none font-black hover:bg-emerald-500 transition-all shadow-[6px_6px_0px_0px_rgba(16,185,129,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                className="flex items-center justify-center gap-2 px-6 py-3 bg-black text-white rounded-none font-black hover:bg-emerald-500 transition-all shadow-[6px_6px_0px_0px_rgba(16,185,129,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none w-full md:w-auto"
               >
                 <LogIn className="w-4 h-4" />
                 Sign In with Google
@@ -1102,70 +1156,50 @@ export default function App() {
 
                     <div className="flex flex-wrap gap-2 mb-4">
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider w-full">Quick Add:</span>
-                      <button 
-                        onClick={() => quickAddSource('Bon Apetite', 'https://www.bonappetit.com/recipes')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Bon Apetite
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Food Wishes', 'https://foodwishes.blogspot.com/')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Food Wishes
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Serious Eats', 'https://www.seriouseats.com/recipes-by-course-5117906')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Serious Eats
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Budget Bytes', 'https://www.budgetbytes.com/category/recipes/')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Budget Bytes
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Hello Fresh', 'https://www.hellofresh.com/recipes')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Hello Fresh
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Blue Apron', 'https://www.blueapron.com/cookbook')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Blue Apron
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Americas Test Kitchen', 'https://www.americastestkitchen.com/recipes')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Americas Test Kitchen
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('NYT Cooking', 'https://cooking.nytimes.com/topics/dinner-recipes')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        NYT Cooking
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Whole30', 'https://whole30.com/recipes')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Whole30
-                      </button>
-                      <button 
-                        onClick={() => quickAddSource('Jenn Eats Goood', 'https://jenneatsgoood.com/recipes/')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Jenn Eats Goood
-                      </button>
+                      {[
+                        { name: 'Bon Apetite', url: 'https://www.bonappetit.com/recipes' },
+                        { name: 'Food Wishes', url: 'https://foodwishes.blogspot.com/' },
+                        { name: 'Serious Eats', url: 'https://www.seriouseats.com/recipes-by-course-5117906' },
+                        { name: 'Budget Bytes', url: 'https://www.budgetbytes.com/category/recipes/' },
+                        { name: 'Hello Fresh', url: 'https://www.hellofresh.com/recipes' },
+                        { name: 'Blue Apron', url: 'https://www.blueapron.com/cookbook' },
+                        { name: 'Americas Test Kitchen', url: 'https://www.americastestkitchen.com/recipes' },
+                        { name: 'NYT Cooking', url: 'https://cooking.nytimes.com/topics/dinner-recipes' },
+                        { name: 'Whole30', url: 'https://whole30.com/recipes' },
+                        { name: 'Jenn Eats Goood', url: 'https://jenneatsgoood.com/recipes/' }
+                      ].map(qa => {
+                        const isActive = sources.some(s => s.url === qa.url);
+                        return (
+                          <button 
+                            key={qa.url}
+                            onClick={() => quickAddSource(qa.name, qa.url)}
+                            className={`text-[10px] px-3 py-1 rounded-none border-2 border-black transition-all font-black uppercase tracking-widest ${
+                              isActive 
+                                ? 'bg-sky-400 text-black' 
+                                : 'bg-white text-black hover:bg-sky-400 hover:text-black'
+                            }`}
+                          >
+                            {qa.name}
+                          </button>
+                        );
+                      })}
                     </div>
 
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                      {sources.map(source => (
+                      {sources
+                        .filter(source => ![
+                          'https://www.bonappetit.com/recipes',
+                          'https://foodwishes.blogspot.com/',
+                          'https://www.seriouseats.com/recipes-by-course-5117906',
+                          'https://www.budgetbytes.com/category/recipes/',
+                          'https://www.hellofresh.com/recipes',
+                          'https://www.blueapron.com/cookbook',
+                          'https://www.americastestkitchen.com/recipes',
+                          'https://cooking.nytimes.com/topics/dinner-recipes',
+                          'https://whole30.com/recipes',
+                          'https://jenneatsgoood.com/recipes/'
+                        ].includes(source.url))
+                        .map(source => (
                         <div key={source.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium">{source.name}</span>
@@ -1204,68 +1238,51 @@ export default function App() {
                     exit={{ height: 0, opacity: 0 }}
                     className="px-6 pt-6 pb-6"
                   >
-                    <div className="space-y-2 mb-4">
-                      <input
-                        type="text"
-                        value={newShopName}
-                        onChange={(e) => setNewShopName(e.target.value)}
-                        placeholder="Store Name (e.g. Whole Foods)"
-                        className="w-full px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 font-bold"
-                      />
+                    <div className="space-y-4">
                       <div className="flex gap-2">
                         <input
                           type="text"
-                          value={newShopUrl}
-                          onChange={(e) => setNewShopUrl(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && addShoppingSource()}
-                          placeholder="Weekly Sales URL"
-                          className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 font-bold"
+                          value={zipCode}
+                          onChange={(e) => setZipCode(e.target.value)}
+                          onKeyDown={(e) => e.key === 'Enter' && searchStores()}
+                          placeholder="Zip"
+                          className="w-24 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 font-bold"
                         />
                         <button 
-                          onClick={addShoppingSource}
-                          className="p-3 bg-black text-white hover:bg-purple-500 rounded-none transition-colors border-2 border-black"
+                          onClick={searchStores}
+                          disabled={isSearchingStores}
+                          className="px-6 bg-black text-white hover:bg-purple-500 rounded-none transition-colors border-2 border-black font-black uppercase tracking-widest disabled:opacity-50"
                         >
-                          <Plus className="w-5 h-5" />
+                          {isSearchingStores ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Find Stores'}
                         </button>
                       </div>
-                    </div>
 
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider w-full">Quick Add:</span>
-                      <button 
-                        onClick={() => quickAddShoppingSource('Whole Foods', 'http://wholefoodsmarket.com/sales-flyer?store-id=10480')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-purple-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Whole Foods
-                      </button>
-                      <button 
-                        onClick={() => quickAddShoppingSource('Sprouts', 'https://shop.sprouts.com/store/sprouts/flyers/weekly')}
-                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-purple-500 hover:text-white transition-all font-black uppercase tracking-widest"
-                      >
-                        Sprouts
-                      </button>
-                    </div>
-
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                      {shoppingSources.map(source => (
-                        <div key={source.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium">{source.name}</span>
-                            <a 
-                              href={source.url} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              className="text-[10px] text-purple-500 hover:underline truncate max-w-[150px]"
-                            >
-                              {source.url}
-                            </a>
-                          </div>
-                          <button onClick={() => removeShoppingSource(source.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                      {shoppingSources.length > 0 && (
+                        <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Stores near {zipCode}:</p>
+                          {shoppingSources.map(source => (
+                            <div key={source.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
+                              <div className="flex flex-col">
+                                <span className="text-sm font-medium">{source.name}</span>
+                                <a 
+                                  href={source.url} 
+                                  target="_blank" 
+                                  rel="noreferrer" 
+                                  className="text-[10px] text-purple-500 hover:underline truncate max-w-[200px]"
+                                >
+                                  Weekly Sales Link
+                                </a>
+                              </div>
+                              <button onClick={() => removeShoppingSource(source.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ))}
                         </div>
-                      ))}
-                      {shoppingSources.length === 0 && <p className="text-xs text-slate-400 italic">No stores added.</p>}
+                      )}
+                      {shoppingSources.length === 0 && !isSearchingStores && (
+                        <p className="text-xs text-slate-400 italic text-center py-4">Enter your zip code to find local grocery stores and their weekly sales.</p>
+                      )}
                     </div>
                   </motion.div>
                 )}
@@ -1457,7 +1474,7 @@ export default function App() {
                               onClick={(e) => e.stopPropagation()}
                               className="hover:underline"
                             >
-                              Source Linked
+                              Recipe Link
                             </a>
                           </div>
                           
@@ -1587,6 +1604,12 @@ export default function App() {
                                 exit={{ opacity: 0, x: 10 }}
                                 className="absolute left-full ml-4 top-1/2 -translate-y-1/2 bg-black border-4 border-emerald-500 rounded-none p-4 z-50 w-64 shadow-[8px_8px_0px_0px_rgba(16,185,129,1)] pointer-events-none"
                               >
+                                {item.onSaleAt && (
+                                  <div className="mb-3 pb-2 border-b border-emerald-500/30">
+                                    <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest mb-0.5">Special Offer:</p>
+                                    <p className="text-[11px] text-white font-bold italic">On sale at {item.onSaleAt}</p>
+                                  </div>
+                                )}
                                 <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1.5">Used In:</p>
                                 <div className="space-y-1">
                                   {item.meals.map((mealName, idx) => (
