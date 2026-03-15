@@ -511,8 +511,25 @@ export default function App() {
       setShoppingSources(newSources);
     } catch (err) {
       console.error("Error searching stores:", err);
-      const errorMessage = err instanceof Error ? err.message : String(err);
-      setError(`Failed to find stores: ${errorMessage}`);
+      let errorMessage = "Failed to find stores. Please try again.";
+      
+      if (err instanceof Error) {
+        try {
+          const parsedError = JSON.parse(err.message);
+          if (parsedError.error?.code === 429) {
+            errorMessage = "Search quota exceeded. Please try again later or add stores manually below.";
+          } else {
+            errorMessage = `Search error: ${parsedError.error?.message || err.message}`;
+          }
+        } catch {
+          if (err.message.includes("429") || err.message.includes("quota")) {
+            errorMessage = "Search quota exceeded. Please try again later or add stores manually below.";
+          } else {
+            errorMessage = `Search error: ${err.message}`;
+          }
+        }
+      }
+      setError(errorMessage);
     } finally {
       setIsSearchingStores(false);
     }
@@ -1279,6 +1296,34 @@ export default function App() {
                       {shoppingSources.length === 0 && !isSearchingStores && (
                         <p className="text-xs text-slate-400 italic text-center py-4">Enter your zip code to find local grocery stores and their weekly sales.</p>
                       )}
+
+                      <div className="pt-4 border-t-2 border-slate-100">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">Add Store Manually:</p>
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={newShopName}
+                            onChange={(e) => setNewShopName(e.target.value)}
+                            placeholder="Store Name (e.g. Whole Foods)"
+                            className="w-full px-4 py-2 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 text-sm font-bold"
+                          />
+                          <div className="flex gap-2">
+                            <input
+                              type="text"
+                              value={newShopUrl}
+                              onChange={(e) => setNewShopUrl(e.target.value)}
+                              placeholder="Weekly Sales URL"
+                              className="flex-1 px-4 py-2 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 text-sm font-bold"
+                            />
+                            <button 
+                              onClick={addShoppingSource}
+                              className="px-4 bg-purple-500 text-white hover:bg-purple-600 rounded-none transition-colors border-2 border-black font-black uppercase text-xs"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </motion.div>
                 )}
