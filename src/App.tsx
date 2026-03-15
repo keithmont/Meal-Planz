@@ -481,33 +481,28 @@ export default function App() {
     setError(null);
     const ai = getGenAI();
     if (!ai) {
-      setError("Gemini API key not found.");
+      setError("Gemini API key not found. Please check your settings.");
       setIsSearchingStores(false);
       return;
     }
 
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
+        model: "gemini-3.1-flash-lite-preview",
         contents: `Find 5 major grocery stores within a 5 mile radius of zip code ${zipCode}. For each store, find the direct URL to their weekly sales or circular page. Return the results as a JSON array of objects with "name" and "url" properties.`,
         config: {
           tools: [{ googleSearch: {} }],
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                url: { type: Type.STRING }
-              },
-              required: ["name", "url"]
-            }
-          }
+          // Removing responseMimeType and responseSchema to avoid conflicts with grounding metadata
         }
       });
 
-      const results = JSON.parse(response.text);
+      let jsonText = response.text || '[]';
+      // Clean up markdown code blocks if present
+      if (jsonText.includes('```')) {
+        jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
+      }
+
+      const results = JSON.parse(jsonText);
       const newSources = results.map((r: any) => ({
         id: crypto.randomUUID(),
         name: r.name,
@@ -516,7 +511,8 @@ export default function App() {
       setShoppingSources(newSources);
     } catch (err) {
       console.error("Error searching stores:", err);
-      setError("Failed to find stores. Please try again.");
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(`Failed to find stores: ${errorMessage}`);
     } finally {
       setIsSearchingStores(false);
     }
