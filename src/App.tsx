@@ -782,60 +782,60 @@ export default function App() {
                 initial={{ opacity: 0, scale: 0.95, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden"
+                className="bg-white w-full max-w-md rounded-none border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden"
               >
-                <div className="p-6 border-b border-slate-100 flex items-center justify-between">
-                  <h3 className="text-xl font-bold flex items-center gap-2">
-                    <Mail className="w-5 h-5 text-emerald-600" />
+                <div className="p-6 border-b-4 border-black flex items-center justify-between bg-emerald-500 text-white">
+                  <h3 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-2">
+                    <Mail className="w-6 h-6" />
                     Email Meal Plan
                   </h3>
                   <button 
                     onClick={() => setIsEmailModalOpen(false)}
-                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                    className="p-2 hover:bg-black rounded-none transition-colors"
                   >
-                    <X className="w-5 h-5 text-slate-400" />
+                    <X className="w-6 h-6" />
                   </button>
                 </div>
 
-                <form onSubmit={handleSendEmail} className="p-6 space-y-6">
+                <form onSubmit={handleSendEmail} className="p-8 space-y-8">
                   {emailSent ? (
-                    <div className="py-8 text-center space-y-4">
-                      <div className="w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full flex items-center justify-center mx-auto">
-                        <CheckCircle2 className="w-8 h-8" />
+                    <div className="py-10 text-center space-y-6">
+                      <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-none border-4 border-emerald-500 flex items-center justify-center mx-auto">
+                        <CheckCircle2 className="w-10 h-10" />
                       </div>
-                      <h4 className="text-lg font-bold">Email Sent!</h4>
-                      <p className="text-slate-500 text-sm">Your meal plan for the week of {getFormattedDate()} has been sent.</p>
+                      <h4 className="text-3xl font-black uppercase tracking-tighter">Email Sent!</h4>
+                      <p className="text-slate-600 font-bold uppercase tracking-widest text-sm">Your meal plan for the week of {getFormattedDate()} has been sent.</p>
                     </div>
                   ) : (
                     <>
-                      <div className="space-y-2">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Email Address</label>
+                      <div className="space-y-3">
+                        <label className="text-xs font-black text-black uppercase tracking-[0.2em]">Email Address</label>
                         <input
                           required
                           type="email"
                           value={emailForm.email}
                           onChange={(e) => setEmailForm({ ...emailForm, email: e.target.value })}
                           placeholder="your@email.com"
-                          className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500/20 transition-all"
+                          className="w-full px-4 py-4 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-emerald-50 font-bold transition-all"
                         />
                       </div>
 
-                      <div className="space-y-3">
-                        <label className="text-xs font-bold text-slate-400 uppercase tracking-widest">Include in Email</label>
-                        <div className="space-y-2">
+                      <div className="space-y-4">
+                        <label className="text-xs font-black text-black uppercase tracking-[0.2em]">Include in Email</label>
+                        <div className="space-y-3">
                           {[
                             { id: 'includeIngredients', label: 'Ingredients to Buy' },
                             { id: 'includeMeals', label: 'Meals to Cook' },
                             { id: 'includeBriefs', label: 'Recipe Briefs' }
                           ].map((option) => (
-                            <label key={option.id} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl cursor-pointer hover:bg-slate-100 transition-colors">
+                            <label key={option.id} className="flex items-center gap-4 p-4 bg-white border-2 border-black rounded-none cursor-pointer hover:bg-emerald-50 transition-all">
                               <input
                                 type="checkbox"
                                 checked={emailForm[option.id as keyof typeof emailForm] as boolean}
                                 onChange={(e) => setEmailForm({ ...emailForm, [option.id]: e.target.checked })}
-                                className="w-5 h-5 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                className="w-6 h-6 rounded-none border-2 border-black text-emerald-500 focus:ring-0"
                               />
-                              <span className="text-sm font-medium text-slate-700">{option.label}</span>
+                              <span className="text-sm font-black uppercase tracking-widest text-black">{option.label}</span>
                             </label>
                           ))}
                         </div>
@@ -844,16 +844,16 @@ export default function App() {
                       <button
                         type="submit"
                         disabled={isSendingEmail}
-                        className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white py-4 rounded-2xl font-bold flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95"
+                        className="w-full bg-black hover:bg-emerald-500 text-white py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
                       >
                         {isSendingEmail ? (
                           <>
-                            <Loader2 className="w-5 h-5 animate-spin" />
+                            <Loader2 className="w-6 h-6 animate-spin" />
                             Sending...
                           </>
                         ) : (
                           <>
-                            <Mail className="w-5 h-5" />
+                            <Mail className="w-6 h-6" />
                             Send Meal Plan
                           </>
                         )}
@@ -869,11 +869,11 @@ export default function App() {
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-4xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-              <UtensilsCrossed className="w-8 h-8 text-emerald-600" />
+            <h1 className="text-5xl font-black tracking-tighter text-black flex items-center gap-2">
+              <UtensilsCrossed className="w-10 h-10 text-emerald-500" />
               Quick Planner 3000
             </h1>
-            <p className="text-slate-500 mt-1">Plan Smarter not Harder.</p>
+            <p className="text-slate-600 mt-1 font-bold uppercase tracking-widest text-xs">Plan Smarter not Harder.</p>
           </div>
 
           <div className="flex items-center gap-3">
@@ -881,17 +881,17 @@ export default function App() {
               <Loader2 className="w-5 h-5 animate-spin text-slate-400" />
             ) : user ? (
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-100 rounded-full border border-slate-200">
+                <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-none border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                   {user.user_metadata.avatar_url ? (
-                    <img src={user.user_metadata.avatar_url} alt="" className="w-6 h-6 rounded-full" referrerPolicy="no-referrer" />
+                    <img src={user.user_metadata.avatar_url} alt="" className="w-6 h-6 rounded-none" referrerPolicy="no-referrer" />
                   ) : (
                     <UserIcon className="w-4 h-4 text-slate-500" />
                   )}
-                  <span className="text-sm font-medium text-slate-700">{user.email}</span>
+                  <span className="text-sm font-bold text-black">{user.email}</span>
                 </div>
                 <button
                   onClick={handleSignOut}
-                  className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                  className="flex items-center gap-2 px-4 py-2 text-sm font-bold text-black hover:bg-red-500 hover:text-white border-2 border-black rounded-none transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                 >
                   <LogOut className="w-4 h-4" />
                   Sign Out
@@ -900,7 +900,7 @@ export default function App() {
             ) : (
               <button
                 onClick={handleSignIn}
-                className="flex items-center gap-2 px-6 py-2.5 bg-slate-900 text-white rounded-xl font-medium hover:bg-slate-800 transition-all shadow-sm"
+                className="flex items-center gap-2 px-6 py-3 bg-black text-white rounded-none font-black hover:bg-emerald-500 transition-all shadow-[6px_6px_0px_0px_rgba(16,185,129,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
               >
                 <LogIn className="w-4 h-4" />
                 Sign In with Google
@@ -910,24 +910,24 @@ export default function App() {
         </header>
 
         {user && (
-          <nav className="flex items-center gap-2 bg-white p-1.5 rounded-2xl shadow-sm border border-slate-200">
+          <nav className="flex items-center gap-2 bg-white p-2 rounded-none shadow-none border-4 border-black">
             <button
               onClick={() => setActivePage('home')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${activePage === 'home' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-none text-sm font-black uppercase tracking-widest transition-all ${activePage === 'home' ? 'bg-emerald-500 text-white' : 'text-black hover:bg-emerald-50'}`}
             >
               <Home className="w-4 h-4" />
               Home
             </button>
             <button
               onClick={() => setActivePage('meal-plan')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${activePage === 'meal-plan' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-none text-sm font-black uppercase tracking-widest transition-all ${activePage === 'meal-plan' ? 'bg-emerald-500 text-white' : 'text-black hover:bg-emerald-50'}`}
             >
               <Calendar className="w-4 h-4" />
               Meal Plan
             </button>
             <button
               onClick={() => setActivePage('favorites')}
-              className={`flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl text-sm font-bold transition-all ${activePage === 'favorites' ? 'bg-emerald-600 text-white shadow-md' : 'text-slate-600 hover:bg-slate-50'}`}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-none text-sm font-black uppercase tracking-widest transition-all ${activePage === 'favorites' ? 'bg-emerald-500 text-white' : 'text-black hover:bg-emerald-50'}`}
             >
               <Heart className="w-4 h-4" />
               Favorites
@@ -948,16 +948,16 @@ export default function App() {
           {/* Left Column: Configuration */}
           <div className="space-y-6">
             {/* Inventory */}
-            <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
               <button 
                 onClick={() => toggleSection('inventory')}
-                className="w-full flex items-center justify-between p-6 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between p-6 hover:bg-emerald-50 transition-colors border-b-4 border-black"
               >
                 <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-emerald-600" />
-                  <h2 className="text-lg font-semibold">Inventory</h2>
+                  <Package className="w-5 h-5 text-emerald-500" />
+                  <h2 className="text-xl font-black uppercase tracking-tighter">Inventory</h2>
                 </div>
-                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed.inventory ? '' : 'rotate-180'}`} />
+                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.inventory ? '' : 'rotate-180'}`} />
               </button>
               
               <AnimatePresence>
@@ -966,7 +966,7 @@ export default function App() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pb-6"
+                    className="px-6 pb-6 pt-6"
                   >
                     <div className="flex gap-2 mb-4">
                       <input
@@ -975,25 +975,25 @@ export default function App() {
                         onChange={(e) => setNewItem(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && addInventory()}
                         placeholder="Add item (e.g. Chicken)"
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+                        className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-emerald-50 font-bold"
                       />
                       <button 
                         onClick={addInventory}
-                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        className="p-3 bg-black text-white hover:bg-emerald-500 rounded-none transition-colors border-2 border-black"
                       >
-                        <Plus className="w-5 h-5" />
+                        <Plus className="w-6 h-6" />
                       </button>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                       {inventory.map(item => (
-                        <div key={item.id} className="flex items-center justify-between group bg-slate-50 px-3 py-2 rounded-lg border border-transparent hover:border-slate-200 transition-all">
-                          <span className="text-sm">{item.name}</span>
-                          <button onClick={() => removeInventory(item.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 className="w-4 h-4" />
+                        <div key={item.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
+                          <span className="font-bold">{item.name}</span>
+                          <button onClick={() => removeInventory(item.id)} className="text-slate-400 hover:text-red-600 transition-colors">
+                            <Trash2 className="w-5 h-5" />
                           </button>
                         </div>
                       ))}
-                      {inventory.length === 0 && <p className="text-xs text-slate-400 italic">No items in inventory.</p>}
+                      {inventory.length === 0 && <p className="text-sm text-slate-400 italic font-bold">No items in inventory.</p>}
                     </div>
                   </motion.div>
                 )}
@@ -1001,16 +1001,16 @@ export default function App() {
             </section>
 
             {/* Pantry */}
-            <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
               <button 
                 onClick={() => toggleSection('pantry')}
-                className="w-full flex items-center justify-between p-6 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between p-6 hover:bg-amber-50 transition-colors border-b-4 border-black"
               >
                 <div className="flex items-center gap-2">
-                  <CookingPot className="w-5 h-5 text-amber-600" />
-                  <h2 className="text-lg font-semibold">Pantry Basics</h2>
+                  <CookingPot className="w-5 h-5 text-amber-500" />
+                  <h2 className="text-xl font-black uppercase tracking-tighter">Pantry Basics</h2>
                 </div>
-                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed.pantry ? '' : 'rotate-180'}`} />
+                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.pantry ? '' : 'rotate-180'}`} />
               </button>
 
               <AnimatePresence>
@@ -1019,7 +1019,7 @@ export default function App() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pb-6"
+                    className="px-6 pt-6 pb-6"
                   >
                     <div className="flex gap-2 mb-4">
                       <input
@@ -1028,25 +1028,25 @@ export default function App() {
                         onChange={(e) => setNewPantryItem(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && addPantry()}
                         placeholder="Basic (e.g. Olive Oil)"
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20"
+                        className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-amber-50 font-bold"
                       />
                       <button 
                         onClick={addPantry}
-                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        className="p-3 bg-black text-white hover:bg-amber-500 rounded-none transition-colors border-2 border-black"
                       >
-                        <Plus className="w-5 h-5" />
+                        <Plus className="w-6 h-6" />
                       </button>
                     </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
+                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
                       {pantry.map(item => (
-                        <div key={item.id} className="flex items-center justify-between group bg-slate-50 px-3 py-2 rounded-lg border border-transparent hover:border-slate-200 transition-all">
-                          <span className="text-sm">{item.name}</span>
-                          <button onClick={() => removePantry(item.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 className="w-4 h-4" />
+                        <div key={item.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
+                          <span className="font-bold">{item.name}</span>
+                          <button onClick={() => removePantry(item.id)} className="text-slate-400 hover:text-red-600 transition-colors">
+                            <Trash2 className="w-5 h-5" />
                           </button>
                         </div>
                       ))}
-                      {pantry.length === 0 && <p className="text-xs text-slate-400 italic">No pantry basics added.</p>}
+                      {pantry.length === 0 && <p className="text-sm text-slate-400 italic font-bold">No pantry basics added.</p>}
                     </div>
                   </motion.div>
                 )}
@@ -1054,16 +1054,16 @@ export default function App() {
             </section>
 
             {/* Recipe Sources */}
-            <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
               <button 
                 onClick={() => toggleSection('sources')}
-                className="w-full flex items-center justify-between p-6 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between p-6 hover:bg-blue-50 transition-colors border-b-4 border-black"
               >
                 <div className="flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-blue-600" />
-                  <h2 className="text-lg font-semibold">Recipe Sources</h2>
+                  <Globe className="w-5 h-5 text-blue-500" />
+                  <h2 className="text-xl font-black uppercase tracking-tighter">Recipe Sources</h2>
                 </div>
-                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed.sources ? '' : 'rotate-180'}`} />
+                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.sources ? '' : 'rotate-180'}`} />
               </button>
 
               <AnimatePresence>
@@ -1072,7 +1072,7 @@ export default function App() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pb-6"
+                    className="px-6 pt-6 pb-6"
                   >
                     <div className="space-y-2 mb-4">
                       <input
@@ -1080,7 +1080,7 @@ export default function App() {
                         value={newSourceName}
                         onChange={(e) => setNewSourceName(e.target.value)}
                         placeholder="Source Name (e.g. NYT Cooking)"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                        className="w-full px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-blue-50 font-bold"
                       />
                       <div className="flex gap-2">
                         <input
@@ -1089,11 +1089,11 @@ export default function App() {
                           onChange={(e) => setNewSourceUrl(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && addSource()}
                           placeholder="Website URL"
-                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                          className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-blue-50 font-bold"
                         />
                         <button 
                           onClick={addSource}
-                          className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          className="p-3 bg-black text-white hover:bg-blue-500 rounded-none transition-colors border-2 border-black"
                         >
                           <Plus className="w-5 h-5" />
                         </button>
@@ -1103,14 +1103,62 @@ export default function App() {
                     <div className="flex flex-wrap gap-2 mb-4">
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider w-full">Quick Add:</span>
                       <button 
+                        onClick={() => quickAddSource('Bon Apetite', 'https://www.bonappetit.com/recipes')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        Bon Apetite
+                      </button>
+                      <button 
+                        onClick={() => quickAddSource('Food Wishes', 'https://foodwishes.blogspot.com/')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        Food Wishes
+                      </button>
+                      <button 
+                        onClick={() => quickAddSource('Serious Eats', 'https://www.seriouseats.com/recipes-by-course-5117906')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        Serious Eats
+                      </button>
+                      <button 
+                        onClick={() => quickAddSource('Budget Bytes', 'https://www.budgetbytes.com/category/recipes/')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        Budget Bytes
+                      </button>
+                      <button 
+                        onClick={() => quickAddSource('Hello Fresh', 'https://www.hellofresh.com/recipes')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        Hello Fresh
+                      </button>
+                      <button 
+                        onClick={() => quickAddSource('Blue Apron', 'https://www.blueapron.com/cookbook')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        Blue Apron
+                      </button>
+                      <button 
+                        onClick={() => quickAddSource('Americas Test Kitchen', 'https://www.americastestkitchen.com/recipes')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        Americas Test Kitchen
+                      </button>
+                      <button 
+                        onClick={() => quickAddSource('NYT Cooking', 'https://cooking.nytimes.com/topics/dinner-recipes')}
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
+                      >
+                        NYT Cooking
+                      </button>
+                      <button 
                         onClick={() => quickAddSource('Whole30', 'https://whole30.com/recipes')}
-                        className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md border border-blue-100 hover:bg-blue-100 transition-colors font-bold"
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
                       >
                         Whole30
                       </button>
                       <button 
                         onClick={() => quickAddSource('Jenn Eats Goood', 'https://jenneatsgoood.com/recipes/')}
-                        className="text-[10px] bg-blue-50 text-blue-600 px-2 py-1 rounded-md border border-blue-100 hover:bg-blue-100 transition-colors font-bold"
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-blue-500 hover:text-white transition-all font-black uppercase tracking-widest"
                       >
                         Jenn Eats Goood
                       </button>
@@ -1118,7 +1166,7 @@ export default function App() {
 
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                       {sources.map(source => (
-                        <div key={source.id} className="flex items-center justify-between group bg-slate-50 px-3 py-2 rounded-lg border border-transparent hover:border-slate-200 transition-all">
+                        <div key={source.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium">{source.name}</span>
                             <span className="text-[10px] text-slate-400 truncate max-w-[150px]">{source.url}</span>
@@ -1136,16 +1184,16 @@ export default function App() {
             </section>
 
             {/* Shopping Sources */}
-            <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
               <button 
                 onClick={() => toggleSection('shopping')}
-                className="w-full flex items-center justify-between p-6 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between p-6 hover:bg-purple-50 transition-colors border-b-4 border-black"
               >
                 <div className="flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5 text-purple-600" />
-                  <h2 className="text-lg font-semibold">Shopping Sources</h2>
+                  <ShoppingCart className="w-5 h-5 text-purple-500" />
+                  <h2 className="text-xl font-black uppercase tracking-tighter">Shopping Sources</h2>
                 </div>
-                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed.shopping ? '' : 'rotate-180'}`} />
+                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.shopping ? '' : 'rotate-180'}`} />
               </button>
 
               <AnimatePresence>
@@ -1154,7 +1202,7 @@ export default function App() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pb-6"
+                    className="px-6 pt-6 pb-6"
                   >
                     <div className="space-y-2 mb-4">
                       <input
@@ -1162,7 +1210,7 @@ export default function App() {
                         value={newShopName}
                         onChange={(e) => setNewShopName(e.target.value)}
                         placeholder="Store Name (e.g. Whole Foods)"
-                        className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                        className="w-full px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 font-bold"
                       />
                       <div className="flex gap-2">
                         <input
@@ -1171,11 +1219,11 @@ export default function App() {
                           onChange={(e) => setNewShopUrl(e.target.value)}
                           onKeyDown={(e) => e.key === 'Enter' && addShoppingSource()}
                           placeholder="Weekly Sales URL"
-                          className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/20"
+                          className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 font-bold"
                         />
                         <button 
                           onClick={addShoppingSource}
-                          className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                          className="p-3 bg-black text-white hover:bg-purple-500 rounded-none transition-colors border-2 border-black"
                         >
                           <Plus className="w-5 h-5" />
                         </button>
@@ -1186,13 +1234,13 @@ export default function App() {
                       <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider w-full">Quick Add:</span>
                       <button 
                         onClick={() => quickAddShoppingSource('Whole Foods', 'http://wholefoodsmarket.com/sales-flyer?store-id=10480')}
-                        className="text-[10px] bg-purple-50 text-purple-600 px-2 py-1 rounded-md border border-purple-100 hover:bg-purple-100 transition-colors font-bold"
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-purple-500 hover:text-white transition-all font-black uppercase tracking-widest"
                       >
                         Whole Foods
                       </button>
                       <button 
                         onClick={() => quickAddShoppingSource('Sprouts', 'https://shop.sprouts.com/store/sprouts/flyers/weekly')}
-                        className="text-[10px] bg-purple-50 text-purple-600 px-2 py-1 rounded-md border border-purple-100 hover:bg-purple-100 transition-colors font-bold"
+                        className="text-[10px] bg-white text-black px-3 py-1 rounded-none border-2 border-black hover:bg-purple-500 hover:text-white transition-all font-black uppercase tracking-widest"
                       >
                         Sprouts
                       </button>
@@ -1200,7 +1248,7 @@ export default function App() {
 
                     <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
                       {shoppingSources.map(source => (
-                        <div key={source.id} className="flex items-center justify-between group bg-slate-50 px-3 py-2 rounded-lg border border-transparent hover:border-slate-200 transition-all">
+                        <div key={source.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
                           <div className="flex flex-col">
                             <span className="text-sm font-medium">{source.name}</span>
                             <a 
@@ -1225,16 +1273,16 @@ export default function App() {
             </section>
 
             {/* Allergies */}
-            <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
               <button 
                 onClick={() => toggleSection('allergies')}
-                className="w-full flex items-center justify-between p-6 hover:bg-slate-50 transition-colors"
+                className="w-full flex items-center justify-between p-6 hover:bg-orange-50 transition-colors border-b-4 border-black"
               >
                 <div className="flex items-center gap-2">
                   <AlertTriangle className="w-5 h-5 text-orange-500" />
-                  <h2 className="text-lg font-semibold">Allergies</h2>
+                  <h2 className="text-xl font-black uppercase tracking-tighter">Allergies</h2>
                 </div>
-                <ChevronDown className={`w-5 h-5 text-slate-400 transition-transform ${collapsed.allergies ? '' : 'rotate-180'}`} />
+                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.allergies ? '' : 'rotate-180'}`} />
               </button>
 
               <AnimatePresence>
@@ -1243,7 +1291,7 @@ export default function App() {
                     initial={{ height: 0, opacity: 0 }}
                     animate={{ height: 'auto', opacity: 1 }}
                     exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pb-6"
+                    className="px-6 pt-6 pb-6"
                   >
                     <div className="flex gap-2 mb-4">
                       <input
@@ -1252,18 +1300,18 @@ export default function App() {
                         onChange={(e) => setNewAllergy(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && addAllergy()}
                         placeholder="Avoid (e.g. Peanuts)"
-                        className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-orange-500/20"
+                        className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-orange-50 font-bold"
                       />
                       <button 
                         onClick={addAllergy}
-                        className="p-2 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors"
+                        className="p-3 bg-black text-white hover:bg-orange-500 rounded-none transition-colors border-2 border-black"
                       >
                         <Plus className="w-5 h-5" />
                       </button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {allergies.map(allergy => (
-                        <div key={allergy.id} className="flex items-center gap-1 bg-orange-50 text-orange-700 px-2 py-1 rounded-full text-xs font-medium border border-orange-100">
+                        <div key={allergy.id} className="flex items-center gap-1 bg-orange-50 text-orange-700 px-3 py-1 rounded-none text-xs font-black uppercase tracking-widest border-2 border-orange-500">
                           {allergy.ingredient}
                           <button onClick={() => removeAllergy(allergy.id)} className="hover:text-orange-900">
                             <Plus className="w-3 h-3 rotate-45" />
@@ -1283,13 +1331,13 @@ export default function App() {
                 <button
                   onClick={saveSettings}
                   disabled={isSaving}
-                  className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95"
+                  className="w-full bg-blue-500 hover:bg-black text-white px-6 py-4 rounded-none font-black uppercase tracking-widest flex items-center justify-center gap-3 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                 >
                   {isSaving ? <Loader2 className="w-6 h-6 animate-spin" /> : <CheckCircle2 className="w-6 h-6" />}
                   Save Settings
                 </button>
               ) : (
-                <p className="text-xs text-slate-500 font-medium px-1 italic">
+                <p className="text-xs text-slate-600 font-bold px-1 italic uppercase tracking-wider">
                   Sign in to save your settings to your account.
                 </p>
               )}
@@ -1301,16 +1349,16 @@ export default function App() {
                 }
               </p>
               
-              <div className="flex items-center gap-2 bg-white p-2 rounded-2xl shadow-sm border border-slate-200">
+              <div className="flex items-center gap-2 bg-white p-2 rounded-none border-4 border-black">
                 <button
                   onClick={exportData}
-                  className="flex-1 py-3 hover:bg-slate-50 rounded-xl text-slate-600 flex items-center justify-center gap-2 text-sm font-bold transition-colors"
+                  className="flex-1 py-3 hover:bg-emerald-50 rounded-none text-black flex items-center justify-center gap-2 text-sm font-black uppercase tracking-widest transition-colors"
                 >
                   <Download className="w-4 h-4" />
                   Export
                 </button>
-                <div className="w-px h-6 bg-slate-200" />
-                <label className="flex-1 py-3 hover:bg-slate-50 rounded-xl text-slate-600 flex items-center justify-center gap-2 text-sm font-bold cursor-pointer transition-colors">
+                <div className="w-1 h-8 bg-black" />
+                <label className="flex-1 py-3 hover:bg-emerald-50 rounded-none text-black flex items-center justify-center gap-2 text-sm font-black uppercase tracking-widest cursor-pointer transition-colors">
                   <Upload className="w-4 h-4" />
                   Import
                   <input type="file" accept=".json" onChange={importData} className="hidden" />
@@ -1320,7 +1368,7 @@ export default function App() {
               <button
                 onClick={() => generateMeals(false)}
                 disabled={isGenerating || isRegenerating}
-                className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white px-6 py-4 rounded-2xl font-bold flex items-center justify-center gap-3 shadow-lg transition-all active:scale-95"
+                className="w-full bg-emerald-500 hover:bg-black text-white px-6 py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
               >
                 {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
                 Generate 10 Meal Ideas
@@ -1334,7 +1382,7 @@ export default function App() {
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-bold flex items-center gap-2">
                   Generated Ideas
-                  {mealIdeas.length > 0 && <span className="text-sm font-normal text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{mealIdeas.length}</span>}
+                  {mealIdeas.length > 0 && <span className="text-sm font-black text-black bg-emerald-500 px-3 py-1 rounded-none border-2 border-black">{mealIdeas.length}</span>}
                 </h2>
               </div>
               
@@ -1347,10 +1395,10 @@ export default function App() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.05 }}
                       onClick={() => toggleMealSelection(meal.id)}
-                      className={`relative cursor-pointer group p-5 rounded-2xl border transition-all ${
+                      className={`relative cursor-pointer group p-6 rounded-none border-4 transition-all ${
                         selectedMealIds.includes(meal.id)
-                          ? 'bg-emerald-50 border-emerald-200 ring-1 ring-emerald-200'
-                          : 'bg-white border-slate-200 hover:border-emerald-200 hover:shadow-md'
+                          ? 'bg-emerald-50 border-emerald-500 shadow-[4px_4px_0px_0px_rgba(16,185,129,1)]'
+                          : 'bg-white border-black hover:border-emerald-500 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
                       }`}
                     >
                       <div className="flex justify-between items-start mb-2">
@@ -1430,7 +1478,7 @@ export default function App() {
                                   initial={{ opacity: 0, scale: 0.95, y: 10 }}
                                   animate={{ opacity: 1, scale: 1, y: 0 }}
                                   exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                  className="absolute bottom-full right-0 mb-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl p-4 z-50 pointer-events-none"
+                                  className="absolute bottom-full right-0 mb-2 w-64 bg-white border-4 border-black rounded-none shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 z-50 pointer-events-none"
                                 >
                                   <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-2 pb-2 border-bottom border-slate-100">Quick Instructions</h4>
                                   <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
@@ -1452,10 +1500,10 @@ export default function App() {
                 </AnimatePresence>
                 
                 {mealIdeas.length === 0 && !isGenerating && (
-                  <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-400 border-2 border-dashed border-slate-200 rounded-3xl">
+                  <div className="col-span-full py-20 flex flex-col items-center justify-center text-black border-4 border-dashed border-black rounded-none bg-slate-50">
                     <Sparkles className="w-12 h-12 mb-4 opacity-20" />
-                    <p className="text-lg font-medium">No meals generated yet</p>
-                    <p className="text-sm">Click the button above to get started!</p>
+                    <p className="text-2xl font-black uppercase tracking-tighter">No meals generated yet</p>
+                    <p className="text-sm font-bold uppercase tracking-widest">Click the button above to get started!</p>
                   </div>
                 )}
 
@@ -1473,7 +1521,7 @@ export default function App() {
                   <button
                     onClick={() => generateMeals(true)}
                     disabled={isGenerating || isRegenerating}
-                    className="bg-white border border-slate-200 text-slate-600 px-8 py-3 rounded-xl font-bold flex items-center gap-2 shadow-sm hover:bg-slate-50 transition-all active:scale-95 disabled:opacity-50"
+                    className="bg-white border-4 border-black text-black px-10 py-4 rounded-none font-black uppercase tracking-widest flex items-center gap-2 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-50 transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
                   >
                     {isRegenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5 text-emerald-500" />}
                     Regenerate (Keep Selected)
@@ -1498,15 +1546,15 @@ export default function App() {
               <motion.section
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="bg-slate-900 text-white rounded-3xl p-8 shadow-xl"
+                className="bg-black text-white rounded-none p-10 border-4 border-emerald-500 shadow-[10px_10px_0px_0px_rgba(16,185,129,1)]"
               >
-                <div className="flex items-center gap-3 mb-8">
-                  <div className="p-3 bg-emerald-500 rounded-2xl">
-                    <ShoppingCart className="w-6 h-6 text-white" />
+                <div className="flex items-center gap-4 mb-10">
+                  <div className="p-4 bg-emerald-500 rounded-none">
+                    <ShoppingCart className="w-8 h-8 text-white" />
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold">Shopping List</h2>
-                    <p className="text-slate-400 text-sm">Based on {selectedMealIds.length} selected meals</p>
+                    <h2 className="text-4xl font-black uppercase tracking-tighter">Shopping List</h2>
+                    <p className="text-emerald-400 text-sm font-bold uppercase tracking-widest">Based on {selectedMealIds.length} selected meals</p>
                   </div>
                 </div>
 
@@ -1537,7 +1585,7 @@ export default function App() {
                                 initial={{ opacity: 0, x: 10 }}
                                 animate={{ opacity: 1, x: 0 }}
                                 exit={{ opacity: 0, x: 10 }}
-                                className="absolute left-full ml-4 top-1/2 -translate-y-1/2 bg-slate-800 border border-slate-700 rounded-lg p-3 z-50 w-48 shadow-2xl pointer-events-none"
+                                className="absolute left-full ml-4 top-1/2 -translate-y-1/2 bg-black border-4 border-emerald-500 rounded-none p-4 z-50 w-64 shadow-[8px_8px_0px_0px_rgba(16,185,129,1)] pointer-events-none"
                               >
                                 <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1.5">Used In:</p>
                                 <div className="space-y-1">
@@ -1593,7 +1641,7 @@ export default function App() {
                     <div className="flex items-center gap-2">
                       <button 
                         onClick={() => setIsEmailModalOpen(true)}
-                        className="bg-white text-slate-900 px-6 py-2 rounded-xl font-bold text-sm hover:bg-slate-100 transition-colors flex items-center justify-center gap-2"
+                        className="bg-white text-black px-6 py-3 rounded-none border-4 border-black font-black uppercase tracking-widest text-sm hover:bg-emerald-50 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                       >
                         Email List
                         <Mail className="w-4 h-4" />
@@ -1602,7 +1650,7 @@ export default function App() {
                         <button 
                           onClick={saveMealPlan}
                           disabled={isSaving}
-                          className="bg-emerald-600 text-white px-6 py-2 rounded-xl font-bold text-sm hover:bg-emerald-500 transition-colors flex items-center justify-center gap-2"
+                          className="bg-emerald-500 text-white px-6 py-3 rounded-none border-4 border-black font-black uppercase tracking-widest text-sm hover:bg-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
                         >
                           Save Meal Plan
                           {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
@@ -1612,7 +1660,7 @@ export default function App() {
                   </div>
                   
                   {shoppingSources.length > 0 && (
-                    <div className="bg-slate-800/50 p-4 rounded-2xl border border-slate-700">
+                    <div className="bg-black p-6 rounded-none border-4 border-emerald-500 shadow-[6px_6px_0px_0px_rgba(16,185,129,1)]">
                       <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-2">Reference Stores:</p>
                       <div className="flex flex-wrap gap-3">
                         {shoppingSources.map(s => (
@@ -1645,7 +1693,7 @@ export default function App() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {mealPlan.filter(m => m.is_current).map((meal, i) => (
-                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
+                  <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] transition-all">
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
                       <button
@@ -1670,7 +1718,7 @@ export default function App() {
                   </div>
                 ))}
                 {mealPlan.filter(m => m.is_current).length === 0 && (
-                  <div className="col-span-full py-12 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                  <div className="col-span-full py-12 text-center bg-slate-50 rounded-none border-4 border-dashed border-black">
                     <p className="text-slate-400 italic">No meals planned for this week yet.</p>
                   </div>
                 )}
@@ -1686,7 +1734,7 @@ export default function App() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-75">
                 {mealPlan.filter(m => !m.is_current).map((meal, i) => (
-                  <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm grayscale-[0.5]">
+                  <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] grayscale-[0.5]">
                     <h3 className="font-bold text-lg leading-tight mb-2">{meal.name}</h3>
                     <p className="text-sm text-slate-500 line-clamp-2 mb-4">{meal.description}</p>
                     <div className="flex items-center justify-between pt-4 border-t border-slate-100">
@@ -1718,7 +1766,7 @@ export default function App() {
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {favorites.map((meal, i) => (
-                <div key={i} className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm hover:shadow-md transition-all group">
+                <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] transition-all group">
                   <div className="flex justify-between items-start mb-4">
                     <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
                     <button
@@ -1744,7 +1792,7 @@ export default function App() {
                 </div>
               ))}
               {favorites.length === 0 && (
-                <div className="col-span-full py-20 text-center bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+                <div className="col-span-full py-20 text-center bg-slate-50 rounded-none border-4 border-dashed border-black">
                   <Heart className="w-12 h-12 text-slate-200 mx-auto mb-4" />
                   <p className="text-slate-400 italic">You haven't favorited any meals yet.</p>
                   <button 
