@@ -38,6 +38,8 @@ import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList,
 import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
 
+const DotLottieWC = 'dotlottie-wc' as any;
+
 // Initialize Gemini
 const getGenAI = () => {
   let apiKey = '';
@@ -489,7 +491,7 @@ export default function App() {
 
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-3.1-flash-lite-preview",
+        model: "gemini-3-flash-preview",
         contents: `Find 5 major grocery stores within a 5 mile radius of zip code ${zipCode}. For each store, find the direct URL to their weekly sales or circular page. Return the results as a JSON array of objects with "name" and "url" properties.`,
         config: {
           tools: [{ googleSearch: {} }],
@@ -699,7 +701,7 @@ export default function App() {
         throw new Error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
       }
 
-      const model = "gemini-3.1-pro-preview";
+      const model = "gemini-3-flash-preview";
       const prompt = getMealPrompt();
 
       const response = await genAI.models.generateContent({
@@ -1557,10 +1559,15 @@ export default function App() {
                 )}
 
                 {isGenerating && (
-                  <div className="col-span-full py-20 flex flex-col items-center justify-center text-slate-400">
-                    <Loader2 className="w-12 h-12 mb-4 animate-spin text-emerald-500" />
-                    <p className="text-lg font-medium text-slate-600">Cooking up ideas...</p>
-                    <p className="text-sm">Gemini is analyzing your inventory, sales, and allergies.</p>
+                  <div className="col-span-full py-10 flex flex-col items-center justify-center text-center">
+                    <DotLottieWC 
+                      src="https://lottie.host/90b7823d-16e9-412e-9203-aeffcff9ba69/tImrIMNKL2.lottie" 
+                      style={{ width: '300px', height: '300px' }} 
+                      autoplay 
+                      loop
+                    ></DotLottieWC>
+                    <p className="text-2xl font-black uppercase tracking-tighter text-black mt-4">Cooking up ideas...</p>
+                    <p className="text-sm font-bold uppercase tracking-widest text-slate-400">Gemini is analyzing your inventory, sales, and allergies.</p>
                   </div>
                 )}
               </div>
