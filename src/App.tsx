@@ -77,6 +77,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [quotaCooldown, setQuotaCooldown] = useState<number | null>(null);
   const [hoveredRecipeId, setHoveredRecipeId] = useState<string | null>(null);
   const [hoveredIngredient, setHoveredIngredient] = useState<string | null>(null);
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -512,26 +513,24 @@ export default function App() {
         url: r.url
       }));
       setShoppingSources(newSources);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error searching stores:", err);
       let errorMessage = "Failed to find stores. Please try again.";
       
-      if (err instanceof Error) {
-        try {
-          const parsedError = JSON.parse(err.message);
-          if (parsedError.error?.code === 429) {
-            errorMessage = "Search quota exceeded. Please try again later or add stores manually below.";
-          } else {
-            errorMessage = `Search error: ${parsedError.error?.message || err.message}`;
-          }
-        } catch {
-          if (err.message.includes("429") || err.message.includes("quota")) {
-            errorMessage = "Search quota exceeded. Please try again later or add stores manually below.";
-          } else {
-            errorMessage = `Search error: ${err.message}`;
-          }
+      const isQuotaError = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED');
+      
+      if (isQuotaError) {
+        errorMessage = "Search quota exceeded. Please wait a moment before searching again.";
+        const retryMatch = err.message.match(/retry in (\d+\.?\d*)s/);
+        if (retryMatch) {
+          setQuotaCooldown(Math.ceil(parseFloat(retryMatch[1])));
+        } else {
+          setQuotaCooldown(60);
         }
+      } else {
+        errorMessage = err instanceof Error ? err.message : String(err);
       }
+      
       setError(errorMessage);
     } finally {
       setIsSearchingStores(false);
@@ -656,41 +655,47 @@ export default function App() {
 
   const getMealPrompt = () => {
     return `
-        Generate 10 meal ideas based on the following context:
-        - Current Inventory (items I have): ${inventory.map(i => i.name).join(', ')}
-        - Pantry Basics (oil, spices, etc. - assume I have these): ${pantry.map(p => p.name).join(', ')}
+        Generate 6 meal ideas based on:
+        - Inventory: ${inventory.map(i => i.name).join(', ')}
+        - Pantry: ${pantry.map(p => p.name).join(', ')}
         - Recipe Sources: ${sources.map(s => `${s.name} (${s.url})`).join(', ')}
-        - Shopping Sources (Weekly Sales/Deals): ${shoppingSources.map(s => `${s.name} (${s.url})`).join(', ')}
-        - Allergies/Avoid these ingredients: ${allergies.map(a => a.ingredient).join(', ')}
+        - Sales: ${shoppingSources.map(s => `${s.name} (${s.url})`).join(', ')}
+        - Allergies: ${allergies.map(a => a.ingredient).join(', ')}
         
-        Guidelines:
-        1. Use the Inventory as a cost-saving measure (prefer using these items), but do NOT restrict meal ideas only to these ingredients.
-        2. Pantry Basics are items I always have. Use them as needed, but they should NOT drive the meal selection.
-        3. CRITICAL: Reference the Shopping Sources (weekly sales) to suggest cost-effective meals. If a shopping source has a deal on a specific protein or vegetable, prioritize those.
-        4. Avoid any ingredients listed in the allergies section.
-        5. The estimatedCost should be the cost of ingredients I need to PURCHASE (not in Inventory/Pantry), leveraging the Shopping Sources for lower prices where possible.
-        6. For ingredients that are on sale at a specific store (based on the Shopping Sources provided), identify which store they are on sale at.
-        7. CRITICAL: Use the Google Search tool to find the EXACT URL for each recipe. Do NOT guess or construct URLs based on patterns. If you suggest a recipe from a specific source (e.g., "AllRecipes"), search for that specific recipe on that site and provide the verified URL. If no direct URL can be found, leave the "sourceUrl" field empty or provide a search link to the recipe.
-        
-        For each meal, provide a JSON object with the following structure:
+        Rules:
+        1. Prioritize Inventory and Sales items.
+        2. Avoid Allergies.
+        3. estimatedCost = cost of items NOT in Inventory/Pantry.
+        4. Use Google Search for EXACT recipe URLs. If not found, use a search link or leave empty.
+        5. Return ONLY a JSON array of 6 objects:
         {
           "name": "string",
           "description": "string",
-          "ingredients": [
-            { "name": "string", "amount": "string", "onSaleAt": "string|null" }
-          ],
+          "ingredients": [{ "name": "string", "amount": "string", "onSaleAt": "string|null" }],
           "sourceUrl": "string",
           "estimatedCost": number,
           "prepTime": "string",
           "cookTime": "string",
           "instructions": ["string"]
         }
-        
-        Return the results as a JSON array of these objects.
       `;
   };
 
+  useEffect(() => {
+    if (quotaCooldown !== null) {
+      const timer = setInterval(() => {
+        setQuotaCooldown(prev => {
+          if (prev === null || prev <= 1) return null;
+          return prev - 1;
+        });
+      }, 1000);
+      return () => clearInterval(timer);
+    }
+  }, [quotaCooldown]);
+
   const generateMeals = async (isRegen = false) => {
+    if (quotaCooldown !== null) return;
+    
     if (isRegen) setIsRegenerating(true);
     else setIsGenerating(true);
     
@@ -709,12 +714,10 @@ export default function App() {
         contents: prompt,
         config: {
           tools: [{ googleSearch: {} }],
-          // Removing responseMimeType and responseSchema to avoid conflicts with grounding metadata
         }
       });
 
       let jsonText = response.text || '[]';
-      // Clean up markdown code blocks if present
       if (jsonText.includes('```')) {
         jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
       }
@@ -722,16 +725,44 @@ export default function App() {
       const newMeals = JSON.parse(jsonText).map((m: any) => ({ ...m, id: crypto.randomUUID() }));
       
       if (isRegen) {
-        // Keep selected, replace unselected
         const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
         setMealIdeas([...selectedMeals, ...newMeals]);
       } else {
         setMealIdeas(newMeals);
         setSelectedMealIds([]);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setError(err instanceof Error ? err.message : "Failed to generate meal ideas. Please check your API key and try again.");
+      
+      let errorMessage = "Failed to generate meal ideas. Please try again.";
+      const errorStr = err.message || String(err);
+      
+      // Handle 429 Quota Exceeded
+      if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED')) {
+        errorMessage = "API Quota Exceeded. You've reached the limit for free requests. Please wait a moment before trying again.";
+        
+        // Try to parse JSON error if present
+        try {
+          const parsed = JSON.parse(errorStr);
+          if (parsed.error?.message) {
+            errorMessage = `Quota Limit: ${parsed.error.message}`;
+          }
+        } catch (e) {
+          // Not JSON, continue with regex
+        }
+
+        // Try to extract retry delay if present in the error string
+        const retryMatch = errorStr.match(/retry in (\d+\.?\d*)s/);
+        if (retryMatch) {
+          setQuotaCooldown(Math.ceil(parseFloat(retryMatch[1])));
+        } else {
+          setQuotaCooldown(120); // Increased default cooldown to 2 mins
+        }
+      } else {
+        errorMessage = err instanceof Error ? err.message : String(err);
+      }
+      
+      setError(errorMessage);
     } finally {
       setIsGenerating(false);
       setIsRegenerating(false);
@@ -1243,10 +1274,10 @@ export default function App() {
                         />
                         <button 
                           onClick={searchStores}
-                          disabled={isSearchingStores}
-                          className="px-6 bg-black text-white hover:bg-purple-500 rounded-none transition-colors border-2 border-black font-black uppercase tracking-widest disabled:opacity-50"
+                          disabled={isSearchingStores || quotaCooldown !== null}
+                          className="px-6 bg-black text-white hover:bg-purple-500 rounded-none transition-colors border-2 border-black font-black uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isSearchingStores ? <Loader2 className="w-5 h-5 animate-spin" /> : 'Find Stores'}
+                          {isSearchingStores ? <Loader2 className="w-5 h-5 animate-spin" /> : (quotaCooldown !== null ? `${quotaCooldown}s` : 'Find Stores')}
                         </button>
                       </div>
 
@@ -1405,11 +1436,11 @@ export default function App() {
 
               <button
                 onClick={() => generateMeals(false)}
-                disabled={isGenerating || isRegenerating}
-                className="w-full bg-emerald-500 hover:bg-black text-white px-6 py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                disabled={isGenerating || isRegenerating || quotaCooldown !== null}
+                className="w-full bg-emerald-500 hover:bg-black text-white px-6 py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
-                Generate 10 Meal Ideas
+                {quotaCooldown !== null ? `Wait ${quotaCooldown}s` : "Generate 6 Meal Ideas"}
               </button>
             </div>
           </div>
@@ -1576,11 +1607,11 @@ export default function App() {
                 <div className="mt-8 flex justify-center">
                   <button
                     onClick={() => generateMeals(true)}
-                    disabled={isGenerating || isRegenerating}
-                    className="bg-white border-4 border-black text-black px-10 py-4 rounded-none font-black uppercase tracking-widest flex items-center gap-2 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-50 transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
+                    disabled={isGenerating || isRegenerating || quotaCooldown !== null}
+                    className="bg-white border-4 border-black text-black px-10 py-4 rounded-none font-black uppercase tracking-widest flex items-center gap-2 shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:bg-emerald-50 transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {isRegenerating ? <Loader2 className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5 text-emerald-500" />}
-                    Regenerate (Keep Selected)
+                    {quotaCooldown !== null ? `Wait ${quotaCooldown}s` : "Regenerate (Keep Selected)"}
                   </button>
                   
                   {user && favorites.length > 0 && (
