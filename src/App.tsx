@@ -76,6 +76,7 @@ export default function App() {
   const [selectedMealIds, setSelectedMealIds] = useState<string[]>([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [activeModel, setActiveModel] = useState<string>("gemini-3-flash-preview");
   const [error, setError] = useState<string | null>(null);
   const [quotaCooldown, setQuotaCooldown] = useState<number | null>(null);
   const [hoveredRecipeId, setHoveredRecipeId] = useState<string | null>(null);
@@ -490,51 +491,66 @@ export default function App() {
       return;
     }
 
-    try {
-      const response = await ai.models.generateContent({
-        model: "gemini-3-flash-preview",
-        contents: `Find 5 major grocery stores within a 5 mile radius of zip code ${zipCode}. For each store, find the direct URL to their weekly sales or circular page. Return the results as a JSON array of objects with "name" and "url" properties.`,
-        config: {
-          tools: [{ googleSearch: {} }],
-          // Removing responseMimeType and responseSchema to avoid conflicts with grounding metadata
+    const models = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview", "gemini-2.5-flash"];
+    let success = false;
+    let lastErr: any = null;
+
+    for (const modelName of models) {
+      if (success) break;
+      setActiveModel(modelName);
+      try {
+        const response = await ai.models.generateContent({
+          model: modelName,
+          contents: `Find 5 major grocery stores within a 5 mile radius of zip code ${zipCode}. For each store, find the direct URL to their weekly sales or circular page. Return the results as a JSON array of objects with "name" and "url" properties.`,
+          config: {
+            tools: [{ googleSearch: {} }],
+          }
+        });
+
+        let jsonText = response.text || '[]';
+        if (jsonText.includes('```')) {
+          jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
         }
-      });
 
-      let jsonText = response.text || '[]';
-      // Clean up markdown code blocks if present
-      if (jsonText.includes('```')) {
-        jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
+        const results = JSON.parse(jsonText);
+        const newSources = results.map((r: any) => ({
+          id: crypto.randomUUID(),
+          name: r.name,
+          url: r.url
+        }));
+        setShoppingSources(newSources);
+        success = true;
+      } catch (err: any) {
+        lastErr = err;
+        const errorStr = err.message || String(err);
+        if (!errorStr.includes('429') && !errorStr.includes('RESOURCE_EXHAUSTED')) {
+          break; // Not a quota error, stop trying models
+        }
+        console.warn(`Model ${modelName} exhausted, trying next...`);
       }
+    }
 
-      const results = JSON.parse(jsonText);
-      const newSources = results.map((r: any) => ({
-        id: crypto.randomUUID(),
-        name: r.name,
-        url: r.url
-      }));
-      setShoppingSources(newSources);
-    } catch (err: any) {
-      console.error("Error searching stores:", err);
+    if (!success && lastErr) {
+      console.error("Error searching stores:", lastErr);
       let errorMessage = "Failed to find stores. Please try again.";
       
-      const isQuotaError = err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED');
+      const isQuotaError = lastErr.message?.includes('429') || lastErr.message?.includes('RESOURCE_EXHAUSTED');
       
       if (isQuotaError) {
-        errorMessage = "Search quota exceeded. Please wait a moment before searching again.";
-        const retryMatch = err.message.match(/retry in (\d+\.?\d*)s/);
+        errorMessage = "All available search models are currently at their limit. Please wait a moment.";
+        const retryMatch = lastErr.message.match(/retry in (\d+\.?\d*)s/);
         if (retryMatch) {
           setQuotaCooldown(Math.ceil(parseFloat(retryMatch[1])));
         } else {
           setQuotaCooldown(60);
         }
       } else {
-        errorMessage = err instanceof Error ? err.message : String(err);
+        errorMessage = lastErr instanceof Error ? lastErr.message : String(lastErr);
       }
       
       setError(errorMessage);
-    } finally {
-      setIsSearchingStores(false);
     }
+    setIsSearchingStores(false);
   };
 
   const exportData = () => {
@@ -700,73 +716,87 @@ export default function App() {
     else setIsGenerating(true);
     
     setError(null);
-    try {
-      const genAI = getGenAI();
-      if (!genAI) {
-        throw new Error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
-      }
+    const genAI = getGenAI();
+    if (!genAI) {
+      setError("GEMINI_API_KEY is missing. Please set it in your environment variables.");
+      setIsGenerating(false);
+      setIsRegenerating(false);
+      return;
+    }
 
-      const model = "gemini-3-flash-preview";
-      const prompt = getMealPrompt();
+    const models = ["gemini-3-flash-preview", "gemini-3.1-flash-lite-preview", "gemini-2.5-flash"];
+    let success = false;
+    let lastErr: any = null;
 
-      const response = await genAI.models.generateContent({
-        model,
-        contents: prompt,
-        config: {
-          tools: [{ googleSearch: {} }],
+    for (const modelName of models) {
+      if (success) break;
+      setActiveModel(modelName);
+      try {
+        const prompt = getMealPrompt();
+        const response = await genAI.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: {
+            tools: [{ googleSearch: {} }],
+          }
+        });
+
+        let jsonText = response.text || '[]';
+        if (jsonText.includes('```')) {
+          jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
         }
-      });
 
-      let jsonText = response.text || '[]';
-      if (jsonText.includes('```')) {
-        jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
+        const newMeals = JSON.parse(jsonText).map((m: any) => ({ ...m, id: crypto.randomUUID() }));
+        
+        if (isRegen) {
+          const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
+          setMealIdeas([...selectedMeals, ...newMeals]);
+        } else {
+          setMealIdeas(newMeals);
+          setSelectedMealIds([]);
+        }
+        success = true;
+      } catch (err: any) {
+        lastErr = err;
+        const errorStr = err.message || String(err);
+        if (!errorStr.includes('429') && !errorStr.includes('RESOURCE_EXHAUSTED')) {
+          break; // Not a quota error
+        }
+        console.warn(`Model ${modelName} exhausted, trying next...`);
       }
+    }
 
-      const newMeals = JSON.parse(jsonText).map((m: any) => ({ ...m, id: crypto.randomUUID() }));
-      
-      if (isRegen) {
-        const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
-        setMealIdeas([...selectedMeals, ...newMeals]);
-      } else {
-        setMealIdeas(newMeals);
-        setSelectedMealIds([]);
-      }
-    } catch (err: any) {
-      console.error(err);
+    if (!success && lastErr) {
+      console.error(lastErr);
       
       let errorMessage = "Failed to generate meal ideas. Please try again.";
-      const errorStr = err.message || String(err);
+      const errorStr = lastErr.message || String(lastErr);
       
-      // Handle 429 Quota Exceeded
       if (errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED')) {
-        errorMessage = "API Quota Exceeded. You've reached the limit for free requests. Please wait a moment before trying again.";
+        errorMessage = "All available models are currently at their limit. Please wait a moment.";
         
-        // Try to parse JSON error if present
         try {
           const parsed = JSON.parse(errorStr);
           if (parsed.error?.message) {
             errorMessage = `Quota Limit: ${parsed.error.message}`;
           }
-        } catch (e) {
-          // Not JSON, continue with regex
-        }
+        } catch (e) {}
 
-        // Try to extract retry delay if present in the error string
         const retryMatch = errorStr.match(/retry in (\d+\.?\d*)s/);
         if (retryMatch) {
           setQuotaCooldown(Math.ceil(parseFloat(retryMatch[1])));
         } else {
-          setQuotaCooldown(120); // Increased default cooldown to 2 mins
+          setQuotaCooldown(120);
         }
       } else {
-        errorMessage = err instanceof Error ? err.message : String(err);
+        errorMessage = lastErr instanceof Error ? lastErr.message : String(lastErr);
       }
       
       setError(errorMessage);
-    } finally {
-      setIsGenerating(false);
-      setIsRegenerating(false);
     }
+    
+    setIsGenerating(false);
+    setIsRegenerating(false);
   };
 
   const shoppingList = useMemo((): ShoppingList => {
@@ -1437,10 +1467,16 @@ export default function App() {
               <button
                 onClick={() => generateMeals(false)}
                 disabled={isGenerating || isRegenerating || quotaCooldown !== null}
-                className="w-full bg-emerald-500 hover:bg-black text-white px-6 py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full bg-emerald-500 hover:bg-black text-white px-6 py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed relative group"
               >
                 {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
                 {quotaCooldown !== null ? `Wait ${quotaCooldown}s` : "Generate 6 Meal Ideas"}
+                
+                {(isGenerating || isRegenerating) && (
+                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 font-bold whitespace-nowrap rounded-sm animate-pulse">
+                    USING: {activeModel.toUpperCase()}
+                  </div>
+                )}
               </button>
             </div>
           </div>
