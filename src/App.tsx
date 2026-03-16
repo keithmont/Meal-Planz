@@ -28,7 +28,8 @@ import {
   History,
   Heart,
   Home,
-  Calendar
+  Calendar,
+  Search
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -667,16 +668,23 @@ export default function App() {
         4. Avoid any ingredients listed in the allergies section.
         5. The estimatedCost should be the cost of ingredients I need to PURCHASE (not in Inventory/Pantry), leveraging the Shopping Sources for lower prices where possible.
         6. For ingredients that are on sale at a specific store (based on the Shopping Sources provided), identify which store they are on sale at.
+        7. CRITICAL: Use the Google Search tool to find the EXACT URL for each recipe. Do NOT guess or construct URLs based on patterns. If you suggest a recipe from a specific source (e.g., "AllRecipes"), search for that specific recipe on that site and provide the verified URL. If no direct URL can be found, leave the "sourceUrl" field empty or provide a search link to the recipe.
         
-        For each meal, provide:
-        1. A name
-        2. A brief description
-        3. A list of ingredients with estimated amounts. For each ingredient, if it is on sale at one of the provided Shopping Sources, include the store name in a "onSaleAt" field.
-        4. A direct URL to the specific recipe (NOT an archive or home page) if it relates to one of the provided recipe sources.
-        5. An estimatedCost (number) for the additional groceries needed for this meal (assuming 4 servings).
-        6. prepTime (string, e.g. "15 min")
-        7. cookTime (string, e.g. "30 min")
-        8. instructions (array of strings, simplified steps without commentary)
+        For each meal, provide a JSON object with the following structure:
+        {
+          "name": "string",
+          "description": "string",
+          "ingredients": [
+            { "name": "string", "amount": "string", "onSaleAt": "string|null" }
+          ],
+          "sourceUrl": "string",
+          "estimatedCost": number,
+          "prepTime": "string",
+          "cookTime": "string",
+          "instructions": ["string"]
+        }
+        
+        Return the results as a JSON array of these objects.
       `;
   };
 
@@ -691,45 +699,15 @@ export default function App() {
         throw new Error("GEMINI_API_KEY is missing. Please set it in your environment variables.");
       }
 
-      const model = "gemini-3-flash-preview";
+      const model = "gemini-3.1-pro-preview";
       const prompt = getMealPrompt();
 
       const response = await genAI.models.generateContent({
         model,
         contents: prompt,
         config: {
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                name: { type: Type.STRING },
-                description: { type: Type.STRING },
-                ingredients: {
-                  type: Type.ARRAY,
-                  items: {
-                    type: Type.OBJECT,
-                    properties: {
-                      name: { type: Type.STRING },
-                      amount: { type: Type.STRING },
-                      onSaleAt: { type: Type.STRING }
-                    },
-                    required: ["name", "amount"]
-                  }
-                },
-                sourceUrl: { type: Type.STRING },
-                estimatedCost: { type: Type.NUMBER },
-                prepTime: { type: Type.STRING },
-                cookTime: { type: Type.STRING },
-                instructions: {
-                  type: Type.ARRAY,
-                  items: { type: Type.STRING }
-                }
-              },
-              required: ["name", "description", "ingredients", "estimatedCost", "prepTime", "cookTime", "instructions"]
-            }
-          }
+          tools: [{ googleSearch: {} }],
+          // Removing responseMimeType and responseSchema to avoid conflicts with grounding metadata
         }
       });
 
@@ -1516,6 +1494,19 @@ export default function App() {
                               className="hover:underline"
                             >
                               Recipe Link
+                            </a>
+                          </div>
+
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium uppercase tracking-widest">
+                            <Search className="w-3 h-3" />
+                            <a 
+                              href={`https://www.google.com/search?q=${encodeURIComponent(meal.name + ' recipe')}`}
+                              target="_blank" 
+                              rel="noreferrer" 
+                              onClick={(e) => e.stopPropagation()}
+                              className="hover:underline"
+                            >
+                              Search
                             </a>
                           </div>
                           
