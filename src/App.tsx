@@ -1463,21 +1463,6 @@ export default function App() {
                   <input type="file" accept=".json" onChange={importData} className="hidden" />
                 </label>
               </div>
-
-              <button
-                onClick={() => generateMeals(false)}
-                disabled={isGenerating || isRegenerating || quotaCooldown !== null}
-                className="w-full bg-emerald-500 hover:bg-black text-white px-6 py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed relative group"
-              >
-                {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
-                {quotaCooldown !== null ? `Wait ${quotaCooldown}s` : "Generate 6 Meal Ideas"}
-                
-                {(isGenerating || isRegenerating) && (
-                  <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 font-bold whitespace-nowrap rounded-sm animate-pulse">
-                    USING: {activeModel.toUpperCase()}
-                  </div>
-                )}
-              </button>
             </div>
           </div>
 
@@ -1621,7 +1606,21 @@ export default function App() {
                   <div className="col-span-full py-20 flex flex-col items-center justify-center text-black border-4 border-dashed border-black rounded-none bg-slate-50">
                     <Sparkles className="w-12 h-12 mb-4 opacity-20" />
                     <p className="text-2xl font-black uppercase tracking-tighter">No meals generated yet</p>
-                    <p className="text-sm font-bold uppercase tracking-widest">Click the button above to get started!</p>
+                    
+                    <button
+                      onClick={() => generateMeals(false)}
+                      disabled={isGenerating || isRegenerating || quotaCooldown !== null}
+                      className="mt-6 bg-emerald-500 hover:bg-black text-white px-8 py-4 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50 disabled:cursor-not-allowed relative group"
+                    >
+                      {isGenerating ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sparkles className="w-6 h-6" />}
+                      {quotaCooldown !== null ? `Wait ${quotaCooldown}s` : "Generate Meal Ideas"}
+                      
+                      {(isGenerating || isRegenerating) && (
+                        <div className="absolute -top-10 left-1/2 -translate-x-1/2 bg-black text-white text-[10px] px-2 py-1 font-bold whitespace-nowrap rounded-sm animate-pulse">
+                          USING: {activeModel.toUpperCase()}
+                        </div>
+                      )}
+                    </button>
                   </div>
                 )}
 
@@ -1640,7 +1639,7 @@ export default function App() {
               </div>
 
               {mealIdeas.length > 0 && (
-                <div className="mt-8 flex justify-center">
+                <div className="mt-8 flex flex-col items-center gap-2">
                   <button
                     onClick={() => generateMeals(true)}
                     disabled={isGenerating || isRegenerating || quotaCooldown !== null}
@@ -1651,7 +1650,7 @@ export default function App() {
                   </button>
                   
                   {user && favorites.length > 0 && (
-                    <div className="text-center mt-4">
+                    <div className="text-center">
                       <button 
                         onClick={pullFavorites}
                         className="text-xs text-emerald-600 font-bold hover:underline"
