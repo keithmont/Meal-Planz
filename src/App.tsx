@@ -479,12 +479,12 @@ export default function App() {
       const { error } = await supabase
         .from('meal_plans')
         .update({ is_current: false, planned_at: now })
-        .match({ name: meal.name, user_id: user.id, is_current: true });
+        .eq('id', meal.id);
       
       if (error) throw error;
 
       setMealPlan(prev => prev.map(m => 
-        (m.name === meal.name && m.is_current) ? { ...m, is_current: false, planned_at: now } : m
+        (m.id === meal.id) ? { ...m, is_current: false, planned_at: now } : m
       ));
     } catch (err) {
       console.error(err);
@@ -500,12 +500,12 @@ export default function App() {
       const { error } = await supabase
         .from('meal_plans')
         .update({ is_current: false, did_not_cook: true, planned_at: now })
-        .match({ name: meal.name, user_id: user.id, is_current: true });
+        .eq('id', meal.id);
       
       if (error) throw error;
 
       setMealPlan(prev => prev.map(m => 
-        (m.name === meal.name && m.is_current) ? { ...m, is_current: false, did_not_cook: true, planned_at: now } : m
+        (m.id === meal.id) ? { ...m, is_current: false, did_not_cook: true, planned_at: now } : m
       ));
     } catch (err) {
       console.error(err);
@@ -515,15 +515,17 @@ export default function App() {
   const updateMealPlannedAt = async (meal: MealPlanItem, newDate: string) => {
     if (!user) return;
     try {
+      // Append T12:00:00 to ensure it's "noon" UTC, which survives most timezone shifts for date-only purposes
+      const isoDate = new Date(newDate + 'T12:00:00Z').toISOString();
       const { error } = await supabase
         .from('meal_plans')
-        .update({ planned_at: new Date(newDate).toISOString() })
+        .update({ planned_at: isoDate })
         .match({ name: meal.name, user_id: user.id, planned_at: meal.planned_at });
       
       if (error) throw error;
 
       setMealPlan(prev => prev.map(m => 
-        (m.name === meal.name && m.planned_at === meal.planned_at) ? { ...m, planned_at: new Date(newDate).toISOString() } : m
+        (m.name === meal.name && m.planned_at === meal.planned_at) ? { ...m, planned_at: isoDate } : m
       ));
     } catch (err) {
       console.error(err);
@@ -1961,6 +1963,20 @@ export default function App() {
                     </div>
                     <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
                     
+                    {meal.sourceUrl && (
+                      <div className="mb-4">
+                        <a 
+                          href={meal.sourceUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                        >
+                          <Globe className="w-3 h-3" />
+                          Recipe Link
+                        </a>
+                      </div>
+                    )}
+
                     <div className="mb-6 space-y-3">
                       <button
                         onClick={() => markMealAsCooked(meal)}
@@ -2020,6 +2036,21 @@ export default function App() {
                       </button>
                     </div>
                     <p className="text-sm text-slate-500 line-clamp-2 mb-4">{meal.description}</p>
+                    
+                    {meal.sourceUrl && (
+                      <div className="mb-4">
+                        <a 
+                          href={meal.sourceUrl} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                        >
+                          <Globe className="w-3 h-3" />
+                          Recipe Link
+                        </a>
+                      </div>
+                    )}
+
                     <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
                       <div className="flex items-center justify-between">
                         <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">${meal.estimatedCost}</span>
@@ -2029,15 +2060,15 @@ export default function App() {
                             className="absolute inset-0 opacity-0 cursor-pointer"
                             value={(() => {
                               const d = new Date(meal.planned_at);
-                              const year = d.getFullYear();
-                              const month = String(d.getMonth() + 1).padStart(2, '0');
-                              const day = String(d.getDate()).padStart(2, '0');
+                              const year = d.getUTCFullYear();
+                              const month = String(d.getUTCMonth() + 1).padStart(2, '0');
+                              const day = String(d.getUTCDate()).padStart(2, '0');
                               return `${year}-${month}-${day}`;
                             })()}
                             onChange={(e) => updateMealPlannedAt(meal, e.target.value)}
                           />
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hover:text-emerald-600 transition-colors">
-                            Planned: {new Date(meal.planned_at).toLocaleDateString()}
+                            Planned: {new Date(meal.planned_at).toLocaleDateString(undefined, { timeZone: 'UTC' })}
                           </span>
                         </div>
                       </div>
@@ -2081,6 +2112,21 @@ export default function App() {
                     </button>
                   </div>
                   <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
+                  
+                  {meal.sourceUrl && (
+                    <div className="mb-4">
+                      <a 
+                        href={meal.sourceUrl} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
+                      >
+                        <Globe className="w-3 h-3" />
+                        Recipe Link
+                      </a>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                     <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">${meal.estimatedCost}</span>
                     <button 
