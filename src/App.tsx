@@ -476,18 +476,25 @@ export default function App() {
     // 2. Mark meal as not current (move to history) and update planned_at to now
     const now = new Date().toISOString();
     try {
-      const { error } = await supabase
-        .from('meal_plans')
-        .update({ is_current: false, planned_at: now })
-        .eq('id', meal.id);
+      // Try to update by ID first, fallback to name + is_current if ID is missing
+      let query = supabase.from('meal_plans').update({ is_current: false, planned_at: now });
       
+      if (meal.id) {
+        query = query.eq('id', meal.id);
+      } else {
+        query = query.match({ name: meal.name, user_id: user.id, is_current: true });
+      }
+
+      const { error } = await query;
       if (error) throw error;
 
       setMealPlan(prev => prev.map(m => 
-        (m.id === meal.id) ? { ...m, is_current: false, planned_at: now } : m
+        (m.id === meal.id || (m.name === meal.name && m.is_current)) 
+          ? { ...m, is_current: false, planned_at: now } 
+          : m
       ));
     } catch (err) {
-      console.error(err);
+      console.error('Error marking meal as cooked:', err);
     }
   };
 
@@ -497,18 +504,25 @@ export default function App() {
     // Mark meal as not current (move to history) and set did_not_cook: true
     const now = new Date().toISOString();
     try {
-      const { error } = await supabase
-        .from('meal_plans')
-        .update({ is_current: false, did_not_cook: true, planned_at: now })
-        .eq('id', meal.id);
+      // Try to update by ID first, fallback to name + is_current if ID is missing
+      let query = supabase.from('meal_plans').update({ is_current: false, did_not_cook: true, planned_at: now });
       
+      if (meal.id) {
+        query = query.eq('id', meal.id);
+      } else {
+        query = query.match({ name: meal.name, user_id: user.id, is_current: true });
+      }
+
+      const { error } = await query;
       if (error) throw error;
 
       setMealPlan(prev => prev.map(m => 
-        (m.id === meal.id) ? { ...m, is_current: false, did_not_cook: true, planned_at: now } : m
+        (m.id === meal.id || (m.name === meal.name && m.is_current)) 
+          ? { ...m, is_current: false, did_not_cook: true, planned_at: now } 
+          : m
       ));
     } catch (err) {
-      console.error(err);
+      console.error('Error marking meal as not cooked:', err);
     }
   };
 
