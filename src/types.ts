@@ -40,7 +40,7 @@ export interface MealIdea {
 
 export interface ShoppingList {
   toBuy: { name: string; amount: string; meals: string[]; onSaleAt?: string }[];
-  fromInventory: { name: string; amount: string; meals: string[] }[];
+  fromInventory: { name: string; amount: string; meals: string[]; isPantry: boolean }[];
   totalEstimatedCost: number;
 }
 

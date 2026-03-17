@@ -845,7 +845,7 @@ export default function App() {
   const shoppingList = useMemo((): ShoppingList => {
     const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
     const toBuyMap = new Map<string, { amounts: string[]; meals: string[]; onSaleAt?: string }>();
-    const fromInventoryMap = new Map<string, { amounts: string[]; meals: string[] }>();
+    const fromInventoryMap = new Map<string, { amounts: string[]; meals: string[]; isPantry: boolean }>();
     let totalEstimatedCost = 0;
 
     const inventoryNames = inventory.map(i => i.name.toLowerCase());
@@ -867,13 +867,15 @@ export default function App() {
 
         if ((isAtHome || isInPantry) && !isManuallyAdded) {
           if (!fromInventoryMap.has(ing.name)) {
-            fromInventoryMap.set(ing.name, { amounts: [], meals: [] });
+            fromInventoryMap.set(ing.name, { amounts: [], meals: [], isPantry: isInPantry });
           }
           const entry = fromInventoryMap.get(ing.name)!;
           entry.amounts.push(ing.amount);
           if (!entry.meals.includes(meal.name)) {
             entry.meals.push(meal.name);
           }
+          // If we ever find it in the pantry, we mark it as a pantry item to suppress the warning
+          if (isInPantry) entry.isPantry = true;
         } else {
           if (!toBuyMap.has(ing.name)) {
             toBuyMap.set(ing.name, { amounts: [], meals: [], onSaleAt: ing.onSaleAt });
@@ -924,7 +926,8 @@ export default function App() {
     const fromInventory = Array.from(fromInventoryMap.entries()).map(([name, entry]) => ({
       name,
       amount: combineAmounts(entry.amounts),
-      meals: entry.meals
+      meals: entry.meals,
+      isPantry: entry.isPantry
     }));
 
     return { toBuy, fromInventory, totalEstimatedCost };
@@ -1799,7 +1802,7 @@ export default function App() {
                             </div>
                             <span className="text-slate-500 text-sm font-mono">{item.amount}</span>
                           </div>
-                          {item.meals.length > 1 && (
+                          {item.meals.length > 1 && !item.isPantry && (
                             <div className="ml-7 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
                               <span className="text-amber-500">⚠️ Confirm Quantity! Used in Multiple Meals.</span>
                               <button 
