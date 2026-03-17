@@ -473,17 +473,57 @@ export default function App() {
       await supabase.from('inventory').delete().in('id', itemsToRemove);
     }
 
-    // 2. Mark meal as not current (move to history)
+    // 2. Mark meal as not current (move to history) and update planned_at to now
+    const now = new Date().toISOString();
     try {
       const { error } = await supabase
         .from('meal_plans')
-        .update({ is_current: false })
+        .update({ is_current: false, planned_at: now })
         .match({ name: meal.name, user_id: user.id, is_current: true });
       
       if (error) throw error;
 
       setMealPlan(prev => prev.map(m => 
-        (m.name === meal.name && m.is_current) ? { ...m, is_current: false } : m
+        (m.name === meal.name && m.is_current) ? { ...m, is_current: false, planned_at: now } : m
+      ));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const markMealAsNotCooked = async (meal: MealPlanItem) => {
+    if (!user) return;
+    
+    // Mark meal as not current (move to history) and set did_not_cook: true
+    const now = new Date().toISOString();
+    try {
+      const { error } = await supabase
+        .from('meal_plans')
+        .update({ is_current: false, did_not_cook: true, planned_at: now })
+        .match({ name: meal.name, user_id: user.id, is_current: true });
+      
+      if (error) throw error;
+
+      setMealPlan(prev => prev.map(m => 
+        (m.name === meal.name && m.is_current) ? { ...m, is_current: false, did_not_cook: true, planned_at: now } : m
+      ));
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const updateMealPlannedAt = async (meal: MealPlanItem, newDate: string) => {
+    if (!user) return;
+    try {
+      const { error } = await supabase
+        .from('meal_plans')
+        .update({ planned_at: new Date(newDate).toISOString() })
+        .match({ name: meal.name, user_id: user.id, planned_at: meal.planned_at });
+      
+      if (error) throw error;
+
+      setMealPlan(prev => prev.map(m => 
+        (m.name === meal.name && m.planned_at === meal.planned_at) ? { ...m, planned_at: new Date(newDate).toISOString() } : m
       ));
     } catch (err) {
       console.error(err);
@@ -1904,12 +1944,18 @@ export default function App() {
                     </div>
                     <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
                     
-                    <div className="mb-6">
+                    <div className="mb-6 space-y-3">
                       <button
                         onClick={() => markMealAsCooked(meal)}
                         className="w-full py-3 bg-emerald-500 text-white font-black uppercase tracking-widest text-xs border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
                       >
                         Meal Cooked!
+                      </button>
+                      <button
+                        onClick={() => markMealAsNotCooked(meal)}
+                        className="w-full py-3 bg-red-500 text-white font-black uppercase tracking-widest text-xs border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                      >
+                        Meal not cooked!
                       </button>
                       <p className="text-[10px] text-slate-400 font-bold mt-2 italic">
                         Marking a meal as cooked will remove relevant items from your inventory.
@@ -1942,14 +1988,41 @@ export default function App() {
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-75">
                 {mealPlan.filter(m => !m.is_current).map((meal, i) => (
-                  <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] grayscale-[0.5]">
-                    <h3 className="font-bold text-lg leading-tight mb-2">{meal.name}</h3>
+                  <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] grayscale-[0.5] relative">
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
+                      <button
+                        onClick={() => toggleFavorite(meal)}
+                        className={`p-1 rounded-full transition-colors ${
+                          favorites.some(f => f.name === meal.name)
+                            ? 'text-amber-500 hover:bg-amber-50'
+                            : 'text-slate-300 hover:text-amber-400 hover:bg-slate-50'
+                        }`}
+                      >
+                        <Star className={`w-4 h-4 ${favorites.some(f => f.name === meal.name) ? 'fill-current' : ''}`} />
+                      </button>
+                    </div>
                     <p className="text-sm text-slate-500 line-clamp-2 mb-4">{meal.description}</p>
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                      <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">${meal.estimatedCost}</span>
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                        Planned: {new Date(meal.planned_at).toLocaleDateString()}
-                      </span>
+                    <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">${meal.estimatedCost}</span>
+                        <div className="relative">
+                          <input
+                            type="date"
+                            className="absolute inset-0 opacity-0 cursor-pointer"
+                            value={new Date(meal.planned_at).toISOString().split('T')[0]}
+                            onChange={(e) => updateMealPlannedAt(meal, e.target.value)}
+                          />
+                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hover:text-emerald-600 transition-colors">
+                            Planned: {new Date(meal.planned_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                      {meal.did_not_cook && (
+                        <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">
+                          ❌ Did not cook
+                        </span>
+                      )}
                     </div>
                   </div>
                 ))}

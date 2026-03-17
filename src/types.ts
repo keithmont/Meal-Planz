@@ -61,4 +61,5 @@ export interface MealPlanItem extends MealIdea {
   user_id: string;
   planned_at: string;
   is_current: boolean;
+  did_not_cook?: boolean;
 }
