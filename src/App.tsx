@@ -77,6 +77,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [activeModel, setActiveModel] = useState<string>("gemini-3-flash-preview");
+  const [manuallyAddedToBuy, setManuallyAddedToBuy] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [quotaCooldown, setQuotaCooldown] = useState<number | null>(null);
   const [hoveredRecipeId, setHoveredRecipeId] = useState<string | null>(null);
@@ -437,6 +438,7 @@ export default function App() {
       
       // Clear selection
       setSelectedMealIds([]);
+      setManuallyAddedToBuy([]); // Reset manual additions after saving
       alert("Meal plan saved successfully!");
     } catch (err) {
       console.error('Error saving meal plan:', err);
@@ -444,6 +446,47 @@ export default function App() {
       setError(`Failed to save meal plan: ${msg}`);
     } finally {
       setIsSaving(false);
+    }
+  };
+
+  const markMealAsCooked = async (meal: MealPlanItem) => {
+    if (!user) return;
+    
+    // 1. Remove ingredients from inventory
+    const itemsToRemove: string[] = [];
+
+    meal.ingredients.forEach(ing => {
+      const nameLower = ing.name.toLowerCase();
+      const match = inventory.find(inv => {
+        const invName = inv.name.toLowerCase();
+        return nameLower.includes(invName) || invName.includes(nameLower);
+      });
+      if (match) {
+        itemsToRemove.push(match.id);
+      }
+    });
+
+    if (itemsToRemove.length > 0) {
+      const newInventory = inventory.filter(item => !itemsToRemove.includes(item.id));
+      setInventory(newInventory);
+      
+      await supabase.from('inventory').delete().in('id', itemsToRemove);
+    }
+
+    // 2. Mark meal as not current (move to history)
+    try {
+      const { error } = await supabase
+        .from('meal_plans')
+        .update({ is_current: false })
+        .match({ name: meal.name, user_id: user.id, is_current: true });
+      
+      if (error) throw error;
+
+      setMealPlan(prev => prev.map(m => 
+        (m.name === meal.name && m.is_current) ? { ...m, is_current: false } : m
+      ));
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -802,7 +845,7 @@ export default function App() {
   const shoppingList = useMemo((): ShoppingList => {
     const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
     const toBuyMap = new Map<string, { amounts: string[]; meals: string[]; onSaleAt?: string }>();
-    const fromInventoryMap = new Map<string, string[]>();
+    const fromInventoryMap = new Map<string, { amounts: string[]; meals: string[] }>();
     let totalEstimatedCost = 0;
 
     const inventoryNames = inventory.map(i => i.name.toLowerCase());
@@ -819,11 +862,18 @@ export default function App() {
           nameLower.includes(pantryName) || pantryName.includes(nameLower)
         );
 
-        if (isAtHome || isInPantry) {
+        // Check if manually forced to shopping list
+        const isManuallyAdded = manuallyAddedToBuy.includes(ing.name);
+
+        if ((isAtHome || isInPantry) && !isManuallyAdded) {
           if (!fromInventoryMap.has(ing.name)) {
-            fromInventoryMap.set(ing.name, []);
+            fromInventoryMap.set(ing.name, { amounts: [], meals: [] });
           }
-          fromInventoryMap.get(ing.name)?.push(ing.amount);
+          const entry = fromInventoryMap.get(ing.name)!;
+          entry.amounts.push(ing.amount);
+          if (!entry.meals.includes(meal.name)) {
+            entry.meals.push(meal.name);
+          }
         } else {
           if (!toBuyMap.has(ing.name)) {
             toBuyMap.set(ing.name, { amounts: [], meals: [], onSaleAt: ing.onSaleAt });
@@ -871,13 +921,14 @@ export default function App() {
       onSaleAt: entry.onSaleAt
     }));
 
-    const fromInventory = Array.from(fromInventoryMap.entries()).map(([name, amounts]) => ({
+    const fromInventory = Array.from(fromInventoryMap.entries()).map(([name, entry]) => ({
       name,
-      amount: combineAmounts(amounts)
+      amount: combineAmounts(entry.amounts),
+      meals: entry.meals
     }));
 
     return { toBuy, fromInventory, totalEstimatedCost };
-  }, [selectedMealIds, mealIdeas, inventory, pantry]);
+  }, [selectedMealIds, mealIdeas, inventory, pantry, manuallyAddedToBuy]);
 
   return (
     <div className="min-h-screen bg-[#f5f5f5] text-slate-900 font-sans p-4 md:p-8">
@@ -1740,12 +1791,25 @@ export default function App() {
                     </h3>
                     <ul className="space-y-4">
                       {shoppingList.fromInventory.map((item, i) => (
-                        <li key={i} className="flex items-center justify-between opacity-60">
-                          <div className="flex items-center gap-3">
-                            <CheckCircle2 className="w-4 h-4 text-slate-500" />
-                            <span className="font-medium line-through">{item.name}</span>
+                        <li key={i} className="flex flex-col gap-1 opacity-60">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <CheckCircle2 className="w-4 h-4 text-slate-500" />
+                              <span className="font-medium line-through">{item.name}</span>
+                            </div>
+                            <span className="text-slate-500 text-sm font-mono">{item.amount}</span>
                           </div>
-                          <span className="text-slate-500 text-sm font-mono">{item.amount}</span>
+                          {item.meals.length > 1 && (
+                            <div className="ml-7 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
+                              <span className="text-amber-500">⚠️ Confirm Quantity! Used in Multiple Meals.</span>
+                              <button 
+                                onClick={() => setManuallyAddedToBuy(prev => [...prev, item.name])}
+                                className="text-emerald-500 hover:underline"
+                              >
+                                Add to Shopping List?
+                              </button>
+                            </div>
+                          )}
                         </li>
                       ))}
                       {shoppingList.fromInventory.length === 0 && (
@@ -1836,6 +1900,19 @@ export default function App() {
                       </button>
                     </div>
                     <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
+                    
+                    <div className="mb-6">
+                      <button
+                        onClick={() => markMealAsCooked(meal)}
+                        className="w-full py-3 bg-emerald-500 text-white font-black uppercase tracking-widest text-xs border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
+                      >
+                        Meal Cooked!
+                      </button>
+                      <p className="text-[10px] text-slate-400 font-bold mt-2 italic">
+                        Marking a meal as cooked will remove relevant items from your inventory.
+                      </p>
+                    </div>
+
                     <div className="flex items-center justify-between pt-4 border-t border-slate-100">
                       <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">${meal.estimatedCost}</span>
                       <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
