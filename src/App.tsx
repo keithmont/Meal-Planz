@@ -1785,7 +1785,7 @@ export default function App() {
                       {shoppingList.toBuy.map((item, i) => (
                         <li 
                           key={i} 
-                          className="flex items-center justify-between group relative"
+                          className="grid grid-cols-[1fr_auto] items-center gap-4 group relative"
                           onMouseEnter={() => setHoveredIngredient(item.name)}
                           onMouseLeave={() => setHoveredIngredient(null)}
                         >
@@ -1793,7 +1793,7 @@ export default function App() {
                             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
                             <span className="font-medium">{item.name}</span>
                           </div>
-                          <span className="text-slate-500 text-sm font-mono">{item.amount}</span>
+                          <span className="text-slate-500 text-sm font-mono text-right">{item.amount}</span>
                           
                           <AnimatePresence>
                             {hoveredIngredient === item.name && (
@@ -1896,14 +1896,31 @@ export default function App() {
                   
                   {shoppingSources.length > 0 && (
                     <div className="bg-black p-6 rounded-none border-4 border-emerald-500 shadow-[6px_6px_0px_0px_rgba(16,185,129,1)]">
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-2">Reference Stores:</p>
-                      <div className="flex flex-wrap gap-3">
-                        {shoppingSources.map(s => (
-                          <a key={s.id} href={s.url} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline flex items-center gap-1">
-                            <Globe className="w-3 h-3" />
-                            {s.name}
-                          </a>
-                        ))}
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-4">Reference Stores & Sale Items:</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {shoppingSources.map(s => {
+                          const itemsOnSale = shoppingList.toBuy.filter(item => item.onSaleAt === s.name);
+                          return (
+                            <div key={s.id} className="space-y-3">
+                              <a href={s.url} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline flex items-center gap-1 font-black uppercase tracking-wider">
+                                <Globe className="w-3 h-3" />
+                                {s.name}
+                              </a>
+                              {itemsOnSale.length > 0 ? (
+                                <ul className="space-y-1">
+                                  {itemsOnSale.map((item, idx) => (
+                                    <li key={idx} className="text-[10px] text-yellow-400 font-bold flex items-center gap-2">
+                                      <span className="w-1 h-1 bg-yellow-400 rounded-full" />
+                                      {item.name} ({item.amount})
+                                    </li>
+                                  ))}
+                                </ul>
+                              ) : (
+                                <p className="text-[9px] text-slate-600 italic">No specific sale items identified.</p>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -2010,7 +2027,13 @@ export default function App() {
                           <input
                             type="date"
                             className="absolute inset-0 opacity-0 cursor-pointer"
-                            value={new Date(meal.planned_at).toISOString().split('T')[0]}
+                            value={(() => {
+                              const d = new Date(meal.planned_at);
+                              const year = d.getFullYear();
+                              const month = String(d.getMonth() + 1).padStart(2, '0');
+                              const day = String(d.getDate()).padStart(2, '0');
+                              return `${year}-${month}-${day}`;
+                            })()}
                             onChange={(e) => updateMealPlannedAt(meal, e.target.value)}
                           />
                           <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hover:text-emerald-600 transition-colors">
