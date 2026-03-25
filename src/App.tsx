@@ -37,6 +37,7 @@ import { supabase, isSupabaseConfigured } from './lib/supabase';
 import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList, PantryItem, AppData, FavoriteMeal, MealPlanItem } from './types';
 import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
 import { User } from '@supabase/supabase-js';
+import { Analytics } from "@vercel/analytics/react";
 
 const DotLottieWC = 'dotlottie-wc' as any;
 
@@ -2172,6 +2173,7 @@ export default function App() {
         )}
         </main>
       </div>
+      <Analytics />
     </div>
   );
 }
