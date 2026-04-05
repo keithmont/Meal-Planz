@@ -100,13 +100,16 @@ service cloud.firestore {
 
     match /users/{userId} {
       match /settings/{settingId} {
-        allow read, write: if isOwner(userId) && isValidSettings(request.resource.data);
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidSettings(request.resource.data);
       }
       match /favorites/{favoriteId} {
-        allow read, write: if isOwner(userId) && isValidMeal(request.resource.data);
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidMeal(request.resource.data);
       }
       match /meal_plans/{planId} {
-        allow read, write: if isOwner(userId) && isValidMeal(request.resource.data);
+        allow read, delete: if isOwner(userId);
+        allow create, update: if isOwner(userId) && isValidMeal(request.resource.data);
       }
     }
 

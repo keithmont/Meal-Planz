@@ -30,7 +30,10 @@ import {
   Home,
   Calendar,
   Search,
-  AlertCircle
+  AlertCircle,
+  User as UserIcon,
+  LogIn,
+  LogOut
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
@@ -59,8 +62,6 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList, PantryItem, AppData, FavoriteMeal, MealPlanItem } from './types';
-import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
-
 const DotLottieWC = 'dotlottie-wc' as any;
 
 // Error Handling Spec for Firestore Operations
@@ -1155,8 +1156,8 @@ export default function App() {
             ) : user ? (
               <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
                 <div className="flex items-center gap-2 px-4 py-2 bg-white rounded-none border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] w-full md:w-auto justify-center md:justify-start">
-                  {user.user_metadata.avatar_url ? (
-                    <img src={user.user_metadata.avatar_url} alt="" className="w-6 h-6 rounded-none" referrerPolicy="no-referrer" />
+                  {user.photoURL ? (
+                    <img src={user.photoURL} alt="" className="w-6 h-6 rounded-none" referrerPolicy="no-referrer" />
                   ) : (
                     <UserIcon className="w-4 h-4 text-slate-500" />
                   )}
