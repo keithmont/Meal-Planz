@@ -29,16 +29,132 @@ import {
   Heart,
   Home,
   Calendar,
-  Search
+  Search,
+  AlertCircle
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { supabase, isSupabaseConfigured } from './lib/supabase';
+import { auth, db } from './firebase';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signOut, 
+  User 
+} from 'firebase/auth';
+import { 
+  doc, 
+  setDoc, 
+  getDoc, 
+  getDocs, 
+  collection, 
+  query, 
+  where, 
+  orderBy, 
+  deleteDoc, 
+  addDoc, 
+  updateDoc,
+  serverTimestamp,
+  Timestamp,
+  getDocFromServer
+} from 'firebase/firestore';
 import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList, PantryItem, AppData, FavoriteMeal, MealPlanItem } from './types';
 import { LogIn, LogOut, User as UserIcon } from 'lucide-react';
-import { User } from '@supabase/supabase-js';
 
 const DotLottieWC = 'dotlottie-wc' as any;
+
+// Error Handling Spec for Firestore Operations
+enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
+}
+
+interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId: string | undefined;
+    email: string | null | undefined;
+    emailVerified: boolean | undefined;
+    isAnonymous: boolean | undefined;
+    tenantId: string | null | undefined;
+    providerInfo: {
+      providerId: string;
+      displayName: string | null;
+      email: string | null;
+      photoUrl: string | null;
+    }[];
+  }
+}
+
+function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData.map(provider => ({
+        providerId: provider.providerId,
+        displayName: provider.displayName,
+        email: provider.email,
+        photoUrl: provider.photoURL
+      })) || []
+    },
+    operationType,
+    path
+  }
+  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  throw new Error(JSON.stringify(errInfo));
+}
+
+// Error Boundary Component
+class ErrorBoundary extends (React.Component as any) {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error: any) {
+    return { hasError: true, error };
+  }
+
+  render() {
+    if (this.state.hasError) {
+      let errorMessage = "Something went wrong.";
+      try {
+        const parsed = JSON.parse(this.state.error.message);
+        if (parsed.error) errorMessage = parsed.error;
+      } catch (e) {
+        errorMessage = this.state.error?.message || errorMessage;
+      }
+
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+          <div className="max-w-md w-full bg-white border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
+            <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
+            <h1 className="text-2xl font-black uppercase tracking-tight mb-2">Application Error</h1>
+            <p className="text-slate-600 mb-6">{errorMessage}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              className="w-full py-3 bg-black text-white font-black uppercase tracking-widest hover:bg-slate-800 transition-colors"
+            >
+              Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Initialize Gemini
 const getGenAI = () => {
@@ -109,71 +225,87 @@ export default function App() {
   const [newAllergy, setNewAllergy] = useState('');
   const [zipCode, setZipCode] = useState('');
   const [isSearchingStores, setIsSearchingStores] = useState(false);
+  const [proteinPreferences, setProteinPreferences] = useState<Record<string, number>>({
+    beef: 1,
+    chicken: 1,
+    pork: 1,
+    fish: 1,
+    vegetarian: 1
+  });
 
-  // Supabase Auth Listener
+  // Firebase Auth Listener
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setUser(user);
       setIsAuthLoading(false);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
+    // Test Firestore connection
+    const testConnection = async () => {
+      try {
+        await getDocFromServer(doc(db, 'test', 'connection'));
+      } catch (error) {
+        if(error instanceof Error && error.message.includes('the client is offline')) {
+          console.error("Please check your Firebase configuration. ");
+        }
+      }
+    };
+    testConnection();
 
-    return () => subscription.unsubscribe();
+    return () => unsubscribe();
   }, []);
 
-  // Sync Data with Supabase
+  // Sync Data with Firebase
   useEffect(() => {
     if (!user) return;
 
     const fetchData = async () => {
-      const { data, error } = await supabase
-        .from('user_data')
-        .select('*')
-        .eq('user_id', user.id)
-        .single();
-
-      if (error && error.code !== 'PGRST116') {
-        console.error('Error fetching user data:', error);
-        return;
-      }
-
-      if (data) {
-        if (data.inventory) setInventory(data.inventory);
-        if (data.pantry) setPantry(data.pantry);
-        if (data.sources) setSources(data.sources);
-        if (data.shopping_sources) setShoppingSources(data.shopping_sources);
-        if (data.allergies) setAllergies(data.allergies);
+      const path = `users/${user.uid}/settings/current`;
+      try {
+        const docRef = doc(db, path);
+        const docSnap = await getDoc(docRef);
+        
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          if (data.inventory) setInventory(data.inventory);
+          if (data.pantry) setPantry(data.pantry);
+          if (data.sources) setSources(data.sources);
+          if (data.shoppingSources) setShoppingSources(data.shoppingSources);
+          if (data.allergies) setAllergies(data.allergies);
+          if (data.proteinPreferences) setProteinPreferences(data.proteinPreferences);
+        }
+      } catch (error) {
+        handleFirestoreError(error, OperationType.GET, path);
       }
     };
 
     fetchData();
+    loadSettings(user.uid); // Load favorites and meal plans
   }, [user]);
 
   useEffect(() => {
     if (!user) return;
 
     const saveData = async () => {
-      const { error } = await supabase
-        .from('user_data')
-        .upsert({
-          user_id: user.id,
+      const path = `users/${user.uid}/settings/current`;
+      try {
+        await setDoc(doc(db, path), {
           inventory,
           pantry,
           sources,
-          shopping_sources: shoppingSources,
+          shoppingSources,
           allergies,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
-
-      if (error) console.error('Error saving user data:', error);
+          proteinPreferences,
+          updated_at: serverTimestamp()
+        }, { merge: true });
+      } catch (error) {
+        handleFirestoreError(error, OperationType.WRITE, path);
+      }
     };
 
-    const timeoutId = setTimeout(saveData, 1000);
+    const timeoutId = setTimeout(saveData, 2000);
     return () => clearTimeout(timeoutId);
-  }, [user, inventory, pantry, sources, shoppingSources, allergies]);
+  }, [user, inventory, pantry, sources, shoppingSources, allergies, proteinPreferences]);
 
   // Local Storage Persistence (Fallback/Initial)
   useEffect(() => {
@@ -252,49 +384,44 @@ export default function App() {
   };
 
   const handleSignIn = async () => {
-    if (!isSupabaseConfigured) {
-      setError("Supabase is not configured. Please add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY to your settings.");
-      return;
+    const provider = new GoogleAuthProvider();
+    try {
+      await signInWithPopup(auth, provider);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to sign in');
     }
-    const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: window.location.origin
-      }
-    });
-    if (error) setError(error.message);
   };
 
   const handleSignOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) setError(error.message);
+    try {
+      await signOut(auth);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to sign out');
+    }
   };
 
   const saveSettings = async () => {
     if (!user) return;
     setIsSaving(true);
     setError(null);
+    const path = `users/${user.uid}/settings/current`;
     try {
       const settings: AppData = {
         inventory,
         pantry,
         sources,
         shoppingSources,
-        allergies
+        allergies,
+        proteinPreferences
       };
 
-      const { error: upsertError } = await supabase
-        .from('user_settings')
-        .upsert({ 
-          user_id: user.id, 
-          settings,
-          updated_at: new Date().toISOString()
-        }, { onConflict: 'user_id' });
+      await setDoc(doc(db, path), {
+        ...settings,
+        updated_at: serverTimestamp()
+      }, { merge: true });
 
-      if (upsertError) throw upsertError;
     } catch (err) {
-      console.error('Error saving settings:', err);
-      setError(err instanceof Error ? err.message : 'Failed to save settings');
+      handleFirestoreError(err, OperationType.WRITE, path);
     } finally {
       setIsSaving(false);
     }
@@ -302,42 +429,18 @@ export default function App() {
 
   const loadSettings = async (userId: string) => {
     try {
-      // Load Settings
-      const { data: settingsData, error: settingsError } = await supabase
-        .from('user_settings')
-        .select('settings')
-        .eq('user_id', userId)
-        .single();
-
-      if (settingsError && settingsError.code !== 'PGRST116') throw settingsError;
-
-      if (settingsData?.settings) {
-        const s = settingsData.settings as AppData;
-        setInventory(s.inventory || []);
-        setPantry(s.pantry || []);
-        setSources(s.sources || []);
-        setShoppingSources(s.shoppingSources || []);
-        setAllergies(s.allergies || []);
-      }
-
       // Load Favorites
-      const { data: favsData, error: favsError } = await supabase
-        .from('favorites')
-        .select('*')
-        .eq('user_id', userId);
-      
-      if (favsError) throw favsError;
-      setFavorites(favsData || []);
+      const favsPath = `users/${userId}/favorites`;
+      const favsSnap = await getDocs(collection(db, favsPath));
+      const favsData = favsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as FavoriteMeal));
+      setFavorites(favsData);
 
       // Load Meal Plan
-      const { data: planData, error: planError } = await supabase
-        .from('meal_plans')
-        .select('*')
-        .eq('user_id', userId)
-        .order('planned_at', { ascending: false });
-      
-      if (planError) throw planError;
-      setMealPlan(planData || []);
+      const planPath = `users/${userId}/meal_plans`;
+      const planQuery = query(collection(db, planPath), orderBy('planned_at', 'desc'));
+      const planSnap = await getDocs(planQuery);
+      const planData = planSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as MealPlanItem));
+      setMealPlan(planData);
 
     } catch (err) {
       console.error('Error loading data:', err);
@@ -351,39 +454,27 @@ export default function App() {
     }
 
     const isFav = favorites.some(f => f.name === meal.name);
+    const path = `users/${user.uid}/favorites`;
     try {
       if (isFav) {
-        const { error } = await supabase
-          .from('favorites')
-          .delete()
-          .eq('user_id', user.id)
-          .eq('name', meal.name);
-        if (error) throw error;
-        setFavorites(favorites.filter(f => f.name !== meal.name));
+        const favToDelete = favorites.find(f => f.name === meal.name);
+        if (favToDelete?.id) {
+          await deleteDoc(doc(db, path, favToDelete.id));
+          setFavorites(favorites.filter(f => f.name !== meal.name));
+        }
       } else {
-        // Omit the client-side ID to let Supabase generate a database UUID
         const { id, ...mealData } = meal;
         const newFavData = {
           ...mealData,
-          user_id: user.id,
-          created_at: new Date().toISOString()
+          user_id: user.uid,
+          created_at: serverTimestamp()
         };
         
-        const { data, error } = await supabase
-          .from('favorites')
-          .insert(newFavData)
-          .select()
-          .single();
-          
-        if (error) throw error;
-        if (data) {
-          setFavorites([...favorites, data as FavoriteMeal]);
-        }
+        const docRef = await addDoc(collection(db, path), newFavData);
+        setFavorites([...favorites, { ...newFavData, id: docRef.id } as FavoriteMeal]);
       }
     } catch (err) {
-      console.error('Error toggling favorite:', err);
-      const msg = err instanceof Error ? err.message : (err as any)?.message || 'Unknown error';
-      setError(`Failed to update favorites: ${msg}`);
+      handleFirestoreError(err, OperationType.WRITE, path);
     }
   };
 
@@ -400,149 +491,95 @@ export default function App() {
     }
 
     setIsSaving(true);
+    const path = `users/${user.uid}/meal_plans`;
     try {
       // 1. Mark existing current meals as previous
-      const { error: updateError } = await supabase
-        .from('meal_plans')
-        .update({ is_current: false })
-        .eq('user_id', user.id)
-        .eq('is_current', true);
+      const currentQuery = query(collection(db, path), where('is_current', '==', true));
+      const currentSnap = await getDocs(currentQuery);
       
-      if (updateError) throw updateError;
+      const updatePromises = currentSnap.docs.map(d => 
+        updateDoc(doc(db, path, d.id), { is_current: false })
+      );
+      await Promise.all(updatePromises);
 
-      // 2. Insert new meals as current (omitting client-side IDs)
-      const newPlanItems = selectedMeals.map(m => {
+      // 2. Insert new meals as current
+      const insertPromises = selectedMeals.map(m => {
         const { id, ...mealData } = m;
-        return {
+        return addDoc(collection(db, path), {
           ...mealData,
-          user_id: user.id,
-          planned_at: new Date().toISOString(),
+          user_id: user.uid,
+          planned_at: serverTimestamp(),
           is_current: true
-        };
+        });
       });
 
-      const { data, error: insertError } = await supabase
-        .from('meal_plans')
-        .insert(newPlanItems)
-        .select();
+      const newDocs = await Promise.all(insertPromises);
       
-      if (insertError) throw insertError;
-
-      // Update local state with the data returned from Supabase (which has the real IDs)
-      const savedItems = data as MealPlanItem[];
-      const updatedPlan = [
-        ...savedItems,
-        ...mealPlan.map(p => ({ ...p, is_current: false }))
-      ];
-      setMealPlan(updatedPlan);
+      // Reload meal plan to get updated state
+      await loadSettings(user.uid);
       
       // Clear selection
       setSelectedMealIds([]);
-      setManuallyAddedToBuy([]); // Reset manual additions after saving
+      setManuallyAddedToBuy([]);
       alert("Meal plan saved successfully!");
     } catch (err) {
-      console.error('Error saving meal plan:', err);
-      const msg = err instanceof Error ? err.message : (err as any)?.message || 'Unknown error';
-      setError(`Failed to save meal plan: ${msg}`);
+      handleFirestoreError(err, OperationType.WRITE, path);
     } finally {
       setIsSaving(false);
     }
   };
 
   const markMealAsCooked = async (meal: MealPlanItem) => {
-    if (!user) return;
+    if (!user || !meal.id) return;
     
-    // 1. Remove ingredients from inventory
-    const itemsToRemove: string[] = [];
-
-    meal.ingredients.forEach(ing => {
-      const nameLower = ing.name.toLowerCase();
-      const match = inventory.find(inv => {
-        const invName = inv.name.toLowerCase();
-        return nameLower.includes(invName) || invName.includes(nameLower);
-      });
-      if (match) {
-        itemsToRemove.push(match.id);
-      }
-    });
-
-    if (itemsToRemove.length > 0) {
-      const newInventory = inventory.filter(item => !itemsToRemove.includes(item.id));
-      setInventory(newInventory);
-      
-      await supabase.from('inventory').delete().in('id', itemsToRemove);
-    }
-
-    // 2. Mark meal as not current (move to history) and update planned_at to now
-    const now = new Date().toISOString();
+    const path = `users/${user.uid}/meal_plans`;
     try {
-      // Try to update by ID first, fallback to name + is_current if ID is missing
-      let query = supabase.from('meal_plans').update({ is_current: false, planned_at: now });
-      
-      if (meal.id) {
-        query = query.eq('id', meal.id);
-      } else {
-        query = query.match({ name: meal.name, user_id: user.id, is_current: true });
-      }
-
-      const { error } = await query;
-      if (error) throw error;
+      await updateDoc(doc(db, path, meal.id), { 
+        is_current: false, 
+        planned_at: serverTimestamp() 
+      });
 
       setMealPlan(prev => prev.map(m => 
-        (m.id === meal.id || (m.name === meal.name && m.is_current)) 
-          ? { ...m, is_current: false, planned_at: now } 
-          : m
+        m.id === meal.id ? { ...m, is_current: false, planned_at: new Date().toISOString() } : m
       ));
     } catch (err) {
-      console.error('Error marking meal as cooked:', err);
+      handleFirestoreError(err, OperationType.UPDATE, `${path}/${meal.id}`);
     }
   };
 
   const markMealAsNotCooked = async (meal: MealPlanItem) => {
-    if (!user) return;
+    if (!user || !meal.id) return;
     
-    // Mark meal as not current (move to history) and set did_not_cook: true
-    const now = new Date().toISOString();
+    const path = `users/${user.uid}/meal_plans`;
     try {
-      // Try to update by ID first, fallback to name + is_current if ID is missing
-      let query = supabase.from('meal_plans').update({ is_current: false, did_not_cook: true, planned_at: now });
-      
-      if (meal.id) {
-        query = query.eq('id', meal.id);
-      } else {
-        query = query.match({ name: meal.name, user_id: user.id, is_current: true });
-      }
-
-      const { error } = await query;
-      if (error) throw error;
+      await updateDoc(doc(db, path, meal.id), { 
+        is_current: false, 
+        did_not_cook: true, 
+        planned_at: serverTimestamp() 
+      });
 
       setMealPlan(prev => prev.map(m => 
-        (m.id === meal.id || (m.name === meal.name && m.is_current)) 
-          ? { ...m, is_current: false, did_not_cook: true, planned_at: now } 
-          : m
+        m.id === meal.id ? { ...m, is_current: false, did_not_cook: true, planned_at: new Date().toISOString() } : m
       ));
     } catch (err) {
-      console.error('Error marking meal as not cooked:', err);
+      handleFirestoreError(err, OperationType.UPDATE, `${path}/${meal.id}`);
     }
   };
 
   const updateMealPlannedAt = async (meal: MealPlanItem, newDate: string) => {
-    if (!user) return;
+    if (!user || !meal.id) return;
+    const path = `users/${user.uid}/meal_plans`;
     try {
-      // Append T12:00:00 to ensure it's "noon" UTC, which survives most timezone shifts for date-only purposes
-      const isoDate = new Date(newDate + 'T12:00:00Z').toISOString();
-      const { error } = await supabase
-        .from('meal_plans')
-        .update({ planned_at: isoDate })
-        .match({ name: meal.name, user_id: user.id, planned_at: meal.planned_at });
-      
-      if (error) throw error;
+      const isoDate = new Date(newDate + 'T12:00:00Z');
+      await updateDoc(doc(db, path, meal.id), { 
+        planned_at: Timestamp.fromDate(isoDate) 
+      });
 
       setMealPlan(prev => prev.map(m => 
-        (m.name === meal.name && m.planned_at === meal.planned_at) ? { ...m, planned_at: isoDate } : m
+        m.id === meal.id ? { ...m, planned_at: isoDate.toISOString() } : m
       ));
     } catch (err) {
-      console.error(err);
+      handleFirestoreError(err, OperationType.UPDATE, `${path}/${meal.id}`);
     }
   };
 
@@ -600,18 +637,22 @@ export default function App() {
       try {
         const response = await ai.models.generateContent({
           model: modelName,
-          contents: `Find 5 major grocery stores within a 5 mile radius of zip code ${zipCode}. For each store, find the direct URL to their weekly sales or circular page. Return the results as a JSON array of objects with "name" and "url" properties.`,
+          contents: `Find 5 major grocery stores within a 5 mile radius of zip code ${zipCode}. For each store, find the direct URL to their weekly sales or circular page. Return the results as a JSON array of objects with "name" and "url" properties. 
+          
+          IMPORTANT: Return ONLY the JSON array. Do not include any conversational text or explanation.`,
           config: {
             tools: [{ googleSearch: {} }],
           }
         });
 
         let jsonText = response.text || '[]';
-        if (jsonText.includes('```')) {
-          jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
-        }
+        
+        // Robust JSON extraction
+        const arrayMatch = jsonText.match(/\[[\s\S]*\]/);
+        const objectMatch = jsonText.match(/\{[\s\S]*\}/);
+        const cleanJson = arrayMatch ? arrayMatch[0] : (objectMatch ? objectMatch[0] : jsonText);
 
-        const results = JSON.parse(jsonText);
+        const results = JSON.parse(cleanJson);
         const newSources = results.map((r: any) => ({
           id: crypto.randomUUID(),
           name: r.name,
@@ -769,20 +810,31 @@ export default function App() {
   };
 
   const getMealPrompt = () => {
+    const totalMeals = (Object.values(proteinPreferences) as number[]).reduce((a, b) => a + b, 0) || 6;
+    const proteinRequirements = (Object.entries(proteinPreferences) as [string, number][])
+      .filter(([_, count]) => count > 0)
+      .map(([protein, count]) => `${count} ${protein} based meals`)
+      .join(', ');
+
     return `
-        Generate 6 meal ideas based on:
+        Generate ${totalMeals} meal ideas based on:
         - Inventory: ${inventory.map(i => i.name).join(', ')}
         - Pantry: ${pantry.map(p => p.name).join(', ')}
         - Recipe Sources: ${sources.map(s => `${s.name} (${s.url})`).join(', ')}
         - Sales: ${shoppingSources.map(s => `${s.name} (${s.url})`).join(', ')}
         - Allergies: ${allergies.map(a => a.ingredient).join(', ')}
+        - Protein Requirements: Include exactly ${proteinRequirements || 'a variety of meals'}.
         
         Rules:
         1. Prioritize Inventory and Sales items.
         2. Avoid Allergies.
         3. estimatedCost = cost of items NOT in Inventory/Pantry.
-        4. Use Google Search for EXACT recipe URLs. If not found, use a search link or leave empty.
-        5. Return ONLY a JSON array of 6 objects:
+        4. Use Google Search to find EXACT recipe URLs. 
+           - CRITICAL: DO NOT guess, hallucinate, or construct URLs that you haven't verified via search. 
+           - If you cannot find a direct, verified URL to the recipe, leave "sourceUrl" as an empty string. 
+           - Prioritize recipes from the provided "Recipe Sources" if they have relevant content.
+           - Ensure the URL is a direct link to the recipe page, not just the homepage of a site.
+        5. Return ONLY a JSON array of ${totalMeals} objects. Do not include any conversational text, markdown formatting outside the JSON, or explanation.
         {
           "name": "string",
           "description": "string",
@@ -841,11 +893,13 @@ export default function App() {
         });
 
         let jsonText = response.text || '[]';
-        if (jsonText.includes('```')) {
-          jsonText = jsonText.replace(/```json\n?|```/g, '').trim();
-        }
+        
+        // Robust JSON extraction
+        const arrayMatch = jsonText.match(/\[[\s\S]*\]/);
+        const objectMatch = jsonText.match(/\{[\s\S]*\}/);
+        const cleanJson = arrayMatch ? arrayMatch[0] : (objectMatch ? objectMatch[0] : jsonText);
 
-        const newMeals = JSON.parse(jsonText).map((m: any) => ({ ...m, id: crypto.randomUUID() }));
+        const newMeals = JSON.parse(cleanJson).map((m: any) => ({ ...m, id: crypto.randomUUID() }));
         
         if (isRegen) {
           const selectedMeals = mealIdeas.filter(m => selectedMealIds.includes(m.id));
@@ -990,7 +1044,8 @@ export default function App() {
   }, [selectedMealIds, mealIdeas, inventory, pantry, manuallyAddedToBuy]);
 
   return (
-    <div className="min-h-screen bg-[#f5f5f5] text-slate-900 font-sans p-4 md:p-8">
+    <ErrorBoundary>
+      <div className="min-h-screen bg-[#f5f5f5] text-slate-900 font-sans p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Email Modal */}
         <AnimatePresence>
@@ -1269,6 +1324,61 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </section>
+
+            {/* Proteins */}
+            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
+              <div className="p-6 border-b-4 border-black bg-rose-50">
+                <div className="flex items-center gap-2">
+                  <UtensilsCrossed className="w-5 h-5 text-rose-500" />
+                  <h2 className="text-xl font-black uppercase tracking-tighter">Proteins</h2>
+                </div>
+              </div>
+              <div className="p-6 space-y-4">
+                {Object.entries(proteinPreferences).map(([protein, count]) => (
+                  <div key={protein} className="flex items-center justify-between gap-4">
+                    <label className="text-sm font-black uppercase tracking-widest text-black flex-1">
+                      {protein}
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => setProteinPreferences(prev => ({
+                          ...prev,
+                          [protein]: Math.max(0, prev[protein] - 1)
+                        }))}
+                        className="w-8 h-8 flex items-center justify-center bg-white border-2 border-black hover:bg-rose-100 transition-colors font-black"
+                      >
+                        -
+                      </button>
+                      <input
+                        type="number"
+                        min="0"
+                        value={count}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value) || 0;
+                          setProteinPreferences(prev => ({
+                            ...prev,
+                            [protein]: Math.max(0, val)
+                          }));
+                        }}
+                        className="w-12 text-center py-1 bg-white border-2 border-black font-bold focus:outline-none focus:bg-rose-50"
+                      />
+                      <button
+                        onClick={() => setProteinPreferences(prev => ({
+                          ...prev,
+                          [protein]: prev[protein] + 1
+                        }))}
+                        className="w-8 h-8 flex items-center justify-center bg-white border-2 border-black hover:bg-rose-100 transition-colors font-black"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-2 border-t-2 border-slate-100 italic">
+                  Total meals to generate: {(Object.values(proteinPreferences) as number[]).reduce((a, b) => a + b, 0)}
+                </p>
+              </div>
             </section>
 
             {/* Recipe Sources */}
@@ -1646,8 +1756,8 @@ export default function App() {
                           <span className="text-[10px] text-slate-400 italic">+{meal.ingredients.length - 3} more</span>
                         )}
                       </div>
-                      {meal.sourceUrl && (
-                        <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
+                        {meal.sourceUrl ? (
                           <div className="flex items-center gap-1 text-[10px] text-blue-500 font-medium uppercase tracking-widest">
                             <Globe className="w-3 h-3" />
                             <a 
@@ -1660,54 +1770,59 @@ export default function App() {
                               Recipe Link
                             </a>
                           </div>
+                        ) : (
+                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium uppercase tracking-widest italic">
+                            <Globe className="w-3 h-3 opacity-50" />
+                            <span>No direct link</span>
+                          </div>
+                        )}
 
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                            <Search className="w-3 h-3" />
-                            <a 
-                              href={`https://www.google.com/search?q=${encodeURIComponent(meal.name + ' recipe')}`}
-                              target="_blank" 
-                              rel="noreferrer" 
-                              onClick={(e) => e.stopPropagation()}
-                              className="hover:underline"
-                            >
-                              Search
-                            </a>
-                          </div>
-                          
-                          <div className="relative">
-                            <button
-                              onMouseEnter={() => setHoveredRecipeId(meal.id)}
-                              onMouseLeave={() => setHoveredRecipeId(null)}
-                              onClick={(e) => e.stopPropagation()}
-                              className="flex items-center gap-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded font-bold uppercase tracking-wider transition-colors"
-                            >
-                              <Eye className="w-3 h-3" />
-                              Preview
-                            </button>
-                            
-                            <AnimatePresence>
-                              {hoveredRecipeId === meal.id && (
-                                <motion.div
-                                  initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                  animate={{ opacity: 1, scale: 1, y: 0 }}
-                                  exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                  className="absolute bottom-full right-0 mb-2 w-64 bg-white border-4 border-black rounded-none shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 z-50 pointer-events-none"
-                                >
-                                  <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-2 pb-2 border-bottom border-slate-100">Quick Instructions</h4>
-                                  <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                                    {meal.instructions.map((step, i) => (
-                                      <div key={i} className="flex gap-2 text-[11px] text-slate-600 leading-relaxed">
-                                        <span className="font-bold text-emerald-500">{i + 1}.</span>
-                                        <span>{step}</span>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium uppercase tracking-widest">
+                          <Search className="w-3 h-3" />
+                          <a 
+                            href={`https://www.google.com/search?q=${encodeURIComponent(meal.name + ' recipe')}`}
+                            target="_blank" 
+                            rel="noreferrer" 
+                            onClick={(e) => e.stopPropagation()}
+                            className="hover:underline"
+                          >
+                            Search
+                          </a>
                         </div>
-                      )}
+                        
+                        <div className="relative">
+                          <button
+                            onMouseEnter={() => setHoveredRecipeId(meal.id)}
+                            onMouseLeave={() => setHoveredRecipeId(null)}
+                            onClick={(e) => e.stopPropagation()}
+                            className="flex items-center gap-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded font-bold uppercase tracking-wider transition-colors"
+                          >
+                            <Eye className="w-3 h-3" />
+                            Preview
+                          </button>
+                          
+                          <AnimatePresence>
+                            {hoveredRecipeId === meal.id && (
+                              <motion.div
+                                initial={{ opacity: 0, scale: 0.95, y: 10 }}
+                                animate={{ opacity: 1, scale: 1, y: 0 }}
+                                exit={{ opacity: 0, scale: 0.95, y: 10 }}
+                                className="absolute bottom-full right-0 mb-2 w-64 bg-white border-4 border-black rounded-none shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 z-50 pointer-events-none"
+                              >
+                                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-2 pb-2 border-bottom border-slate-100">Quick Instructions</h4>
+                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
+                                  {meal.instructions.map((step, i) => (
+                                    <div key={i} className="flex gap-2 text-[11px] text-slate-600 leading-relaxed">
+                                      <span className="font-bold text-emerald-500">{i + 1}.</span>
+                                      <span>{step}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
                     </motion.div>
                   ))}
                 </AnimatePresence>
@@ -2173,5 +2288,6 @@ export default function App() {
         </main>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

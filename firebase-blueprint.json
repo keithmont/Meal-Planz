@@ -1,0 +1,86 @@
+{
+  "entities": {
+    "UserSettings": {
+      "title": "User Settings",
+      "description": "User preferences and inventory data",
+      "type": "object",
+      "properties": {
+        "inventory": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "pantry": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "sources": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "shoppingSources": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "allergies": {
+          "type": "array",
+          "items": { "type": "object" }
+        },
+        "proteinPreferences": {
+          "type": "object"
+        }
+      }
+    },
+    "Favorite": {
+      "title": "Favorite Meal",
+      "description": "A meal idea favorited by the user",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ingredients": { "type": "array" },
+        "sourceUrl": { "type": "string" },
+        "estimatedCost": { "type": "number" },
+        "prepTime": { "type": "string" },
+        "cookTime": { "type": "string" },
+        "instructions": { "type": "array" },
+        "user_id": { "type": "string" },
+        "created_at": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "user_id"]
+    },
+    "MealPlan": {
+      "title": "Meal Plan Item",
+      "description": "A meal planned for a specific date",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "description": { "type": "string" },
+        "ingredients": { "type": "array" },
+        "sourceUrl": { "type": "string" },
+        "estimatedCost": { "type": "number" },
+        "prepTime": { "type": "string" },
+        "cookTime": { "type": "string" },
+        "instructions": { "type": "array" },
+        "user_id": { "type": "string" },
+        "planned_at": { "type": "string", "format": "date-time" },
+        "is_current": { "type": "boolean" },
+        "did_not_cook": { "type": "boolean" }
+      },
+      "required": ["name", "user_id", "planned_at"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/settings/current": {
+      "schema": "UserSettings",
+      "description": "User specific settings and inventory"
+    },
+    "/users/{userId}/favorites/{favoriteId}": {
+      "schema": "Favorite",
+      "description": "User's favorite meals"
+    },
+    "/users/{userId}/meal_plans/{planId}": {
+      "schema": "MealPlan",
+      "description": "User's planned meals"
+    }
+  }
+}

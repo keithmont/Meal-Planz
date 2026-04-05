@@ -50,16 +50,17 @@ export interface AppData {
   sources: Source[];
   shoppingSources: ShoppingSource[];
   allergies: Allergy[];
+  proteinPreferences?: Record<string, number>;
 }
 
 export interface FavoriteMeal extends MealIdea {
   user_id: string;
-  created_at: string;
+  created_at: any;
 }
 
 export interface MealPlanItem extends MealIdea {
   user_id: string;
-  planned_at: string;
+  planned_at: any;
   is_current: boolean;
   did_not_cook?: boolean;
 }

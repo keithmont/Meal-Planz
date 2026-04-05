@@ -1,0 +1,118 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: /users/{userId}/settings/current
+    // Fields:
+    //   - inventory: array (optional)
+    //   - pantry: array (optional)
+    //   - sources: array (optional)
+    //   - shoppingSources: array (optional)
+    //   - allergies: array (optional)
+    //   - proteinPreferences: map (optional)
+    //
+    // Collection: /users/{userId}/favorites/{favoriteId}
+    // Fields:
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - ingredients: array (optional)
+    //   - sourceUrl: string (optional)
+    //   - estimatedCost: number (optional)
+    //   - prepTime: string (optional)
+    //   - cookTime: string (optional)
+    //   - instructions: array (optional)
+    //   - user_id: string (required)
+    //   - created_at: timestamp (optional)
+    //
+    // Collection: /users/{userId}/meal_plans/{planId}
+    // Fields:
+    //   - name: string (required)
+    //   - description: string (optional)
+    //   - ingredients: array (optional)
+    //   - sourceUrl: string (optional)
+    //   - estimatedCost: number (optional)
+    //   - prepTime: string (optional)
+    //   - cookTime: string (optional)
+    //   - instructions: array (optional)
+    //   - user_id: string (required)
+    //   - planned_at: timestamp (required)
+    //   - is_current: boolean (optional)
+    //   - did_not_cook: boolean (optional)
+    //
+    // ===============================================================
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isValidString(val, maxLen) {
+      return val is string && val.size() <= maxLen;
+    }
+
+    function isValidNumber(val) {
+      return val is number;
+    }
+
+    function isValidBoolean(val) {
+      return val is bool;
+    }
+
+    function isValidList(val, maxSize) {
+      return val is list && val.size() <= maxSize;
+    }
+
+    function isValidMap(val) {
+      return val is map;
+    }
+
+    function isValidTimestamp(val) {
+      return val is timestamp;
+    }
+
+    // Domain Validators
+    function isValidSettings(data) {
+      return (data.get('inventory', []) is list) &&
+             (data.get('pantry', []) is list) &&
+             (data.get('sources', []) is list) &&
+             (data.get('shoppingSources', []) is list) &&
+             (data.get('allergies', []) is list) &&
+             (data.get('proteinPreferences', {}) is map);
+    }
+
+    function isValidMeal(data) {
+      return data.name is string && data.name.size() > 0 && data.name.size() < 200 &&
+             data.user_id == request.auth.uid;
+    }
+
+    // ===============================================================
+    // Rules
+    // ===============================================================
+
+    match /users/{userId} {
+      match /settings/{settingId} {
+        allow read, write: if isOwner(userId) && isValidSettings(request.resource.data);
+      }
+      match /favorites/{favoriteId} {
+        allow read, write: if isOwner(userId) && isValidMeal(request.resource.data);
+      }
+      match /meal_plans/{planId} {
+        allow read, write: if isOwner(userId) && isValidMeal(request.resource.data);
+      }
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
