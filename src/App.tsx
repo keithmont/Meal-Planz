@@ -62,100 +62,26 @@ import {
   getDocFromServer
 } from 'firebase/firestore';
 import { InventoryItem, Source, ShoppingSource, Allergy, MealIdea, ShoppingList, PantryItem, AppData, FavoriteMeal, MealPlanItem } from './types';
+import { 
+  OperationType, 
+  handleFirestoreError, 
+  ErrorBoundary 
+} from './lib/firebase-utils';
+
+// Components
+import { InventorySection } from './components/InventorySection';
+import { PantrySection } from './components/PantrySection';
+import { SourceSection } from './components/SourceSection';
+import { ShoppingSourceSection } from './components/ShoppingSourceSection';
+import { AllergySection } from './components/AllergySection';
+import { ProteinSection } from './components/ProteinSection';
+import { MealIdeaCard } from './components/MealIdeaCard';
+import { ShoppingListSection } from './components/ShoppingListSection';
+import { MealPlanSection } from './components/MealPlanSection';
+import { FavoritesSection } from './components/FavoritesSection';
+import { EmailModal } from './components/EmailModal';
+
 const DotLottieWC = 'dotlottie-wc' as any;
-
-// Error Handling Spec for Firestore Operations
-enum OperationType {
-  CREATE = 'create',
-  UPDATE = 'update',
-  DELETE = 'delete',
-  LIST = 'list',
-  GET = 'get',
-  WRITE = 'write',
-}
-
-interface FirestoreErrorInfo {
-  error: string;
-  operationType: OperationType;
-  path: string | null;
-  authInfo: {
-    userId: string | undefined;
-    email: string | null | undefined;
-    emailVerified: boolean | undefined;
-    isAnonymous: boolean | undefined;
-    tenantId: string | null | undefined;
-    providerInfo: {
-      providerId: string;
-      displayName: string | null;
-      email: string | null;
-      photoUrl: string | null;
-    }[];
-  }
-}
-
-function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
-  const errInfo: FirestoreErrorInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    authInfo: {
-      userId: auth.currentUser?.uid,
-      email: auth.currentUser?.email,
-      emailVerified: auth.currentUser?.emailVerified,
-      isAnonymous: auth.currentUser?.isAnonymous,
-      tenantId: auth.currentUser?.tenantId,
-      providerInfo: auth.currentUser?.providerData.map(provider => ({
-        providerId: provider.providerId,
-        displayName: provider.displayName,
-        email: provider.email,
-        photoUrl: provider.photoURL
-      })) || []
-    },
-    operationType,
-    path
-  }
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
-// Error Boundary Component
-class ErrorBoundary extends (React.Component as any) {
-  constructor(props: any) {
-    super(props);
-    this.state = { hasError: false, error: null };
-  }
-
-  static getDerivedStateFromError(error: any) {
-    return { hasError: true, error };
-  }
-
-  render() {
-    if (this.state.hasError) {
-      let errorMessage = "Something went wrong.";
-      try {
-        const parsed = JSON.parse(this.state.error.message);
-        if (parsed.error) errorMessage = parsed.error;
-      } catch (e) {
-        errorMessage = this.state.error?.message || errorMessage;
-      }
-
-      return (
-        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-          <div className="max-w-md w-full bg-white border-4 border-black p-8 shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-            <AlertCircle className="w-12 h-12 text-red-500 mb-4" />
-            <h1 className="text-2xl font-black uppercase tracking-tight mb-2">Application Error</h1>
-            <p className="text-slate-600 mb-6">{errorMessage}</p>
-            <button 
-              onClick={() => window.location.reload()}
-              className="w-full py-3 bg-black text-white font-black uppercase tracking-widest hover:bg-slate-800 transition-colors"
-            >
-              Reload Application
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
 
 // Initialize Gemini
 const getGenAI = () => {
@@ -1049,96 +975,16 @@ export default function App() {
       <div className="min-h-screen bg-[#f5f5f5] text-slate-900 font-sans p-4 md:p-8">
       <div className="max-w-6xl mx-auto space-y-8">
         {/* Email Modal */}
-        <AnimatePresence>
-          {isEmailModalOpen && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                className="bg-white w-full max-w-md rounded-none border-4 border-black shadow-[12px_12px_0px_0px_rgba(0,0,0,1)] overflow-hidden"
-              >
-                <div className="p-6 border-b-4 border-black flex items-center justify-between bg-emerald-500 text-white">
-                  <h3 className="text-2xl font-black uppercase tracking-tighter flex items-center gap-2">
-                    <Mail className="w-6 h-6" />
-                    Email Meal Plan
-                  </h3>
-                  <button 
-                    onClick={() => setIsEmailModalOpen(false)}
-                    className="p-2 hover:bg-black rounded-none transition-colors"
-                  >
-                    <X className="w-6 h-6" />
-                  </button>
-                </div>
-
-                <form onSubmit={handleSendEmail} className="p-8 space-y-8">
-                  {emailSent ? (
-                    <div className="py-10 text-center space-y-6">
-                      <div className="w-20 h-20 bg-emerald-100 text-emerald-600 rounded-none border-4 border-emerald-500 flex items-center justify-center mx-auto">
-                        <CheckCircle2 className="w-10 h-10" />
-                      </div>
-                      <h4 className="text-3xl font-black uppercase tracking-tighter">Email Sent!</h4>
-                      <p className="text-slate-600 font-bold uppercase tracking-widest text-sm">Your meal plan for the week of {getFormattedDate()} has been sent.</p>
-                    </div>
-                  ) : (
-                    <>
-                      <div className="space-y-3">
-                        <label className="text-xs font-black text-black uppercase tracking-[0.2em]">Email Address</label>
-                        <input
-                          required
-                          type="email"
-                          value={emailForm.email}
-                          onChange={(e) => setEmailForm({ ...emailForm, email: e.target.value })}
-                          placeholder="your@email.com"
-                          className="w-full px-4 py-4 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-emerald-50 font-bold transition-all"
-                        />
-                      </div>
-
-                      <div className="space-y-4">
-                        <label className="text-xs font-black text-black uppercase tracking-[0.2em]">Include in Email</label>
-                        <div className="space-y-3">
-                          {[
-                            { id: 'includeIngredients', label: 'Ingredients to Buy' },
-                            { id: 'includeMeals', label: 'Meals to Cook' },
-                            { id: 'includeBriefs', label: 'Recipe Briefs' }
-                          ].map((option) => (
-                            <label key={option.id} className="flex items-center gap-4 p-4 bg-white border-2 border-black rounded-none cursor-pointer hover:bg-emerald-50 transition-all">
-                              <input
-                                type="checkbox"
-                                checked={emailForm[option.id as keyof typeof emailForm] as boolean}
-                                onChange={(e) => setEmailForm({ ...emailForm, [option.id]: e.target.checked })}
-                                className="w-6 h-6 rounded-none border-2 border-black text-emerald-500 focus:ring-0"
-                              />
-                              <span className="text-sm font-black uppercase tracking-widest text-black">{option.label}</span>
-                            </label>
-                          ))}
-                        </div>
-                      </div>
-
-                      <button
-                        type="submit"
-                        disabled={isSendingEmail}
-                        className="w-full bg-black hover:bg-emerald-500 text-white py-5 rounded-none font-black uppercase tracking-[0.2em] flex items-center justify-center gap-3 shadow-[8px_8px_0px_0px_rgba(0,0,0,0.2)] transition-all active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
-                      >
-                        {isSendingEmail ? (
-                          <>
-                            <Loader2 className="w-6 h-6 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Mail className="w-6 h-6" />
-                            Send Meal Plan
-                          </>
-                        )}
-                      </button>
-                    </>
-                  )}
-                </form>
-              </motion.div>
-            </div>
-          )}
-        </AnimatePresence>
+        <EmailModal 
+          isOpen={isEmailModalOpen}
+          onClose={() => setIsEmailModalOpen(false)}
+          emailSent={emailSent}
+          emailForm={emailForm}
+          setEmailForm={setEmailForm}
+          handleSendEmail={handleSendEmail}
+          isSendingEmail={isSendingEmail}
+          getFormattedDate={getFormattedDate}
+        />
 
         {/* Header */}
         <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -1221,429 +1067,70 @@ export default function App() {
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column: Configuration */}
           <div className="space-y-6">
-            {/* Inventory */}
-            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
-              <button 
-                onClick={() => toggleSection('inventory')}
-                className="w-full flex items-center justify-between p-6 hover:bg-emerald-50 transition-colors border-b-4 border-black"
-              >
-                <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 text-emerald-500" />
-                  <h2 className="text-xl font-black uppercase tracking-tighter">Inventory</h2>
-                </div>
-                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.inventory ? '' : 'rotate-180'}`} />
-              </button>
-              
-              <AnimatePresence>
-                {!collapsed.inventory && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pb-6 pt-6"
-                  >
-                    <div className="flex gap-2 mb-4">
-                      <input
-                        type="text"
-                        value={newItem}
-                        onChange={(e) => setNewItem(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addInventory()}
-                        placeholder="Add item (e.g. Chicken)"
-                        className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-emerald-50 font-bold"
-                      />
-                      <button 
-                        onClick={addInventory}
-                        className="p-3 bg-black text-white hover:bg-emerald-500 rounded-none transition-colors border-2 border-black"
-                      >
-                        <Plus className="w-6 h-6" />
-                      </button>
-                    </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                      {inventory.map(item => (
-                        <div key={item.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
-                          <span className="font-bold">{item.name}</span>
-                          <button onClick={() => removeInventory(item.id)} className="text-slate-400 hover:text-red-600 transition-colors">
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
-                      ))}
-                      {inventory.length === 0 && <p className="text-sm text-slate-400 italic font-bold">No items in inventory.</p>}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </section>
+            <InventorySection 
+              inventory={inventory}
+              collapsed={collapsed.inventory}
+              toggleSection={() => toggleSection('inventory')}
+              newItem={newItem}
+              setNewItem={setNewItem}
+              addInventory={addInventory}
+              removeInventory={removeInventory}
+            />
 
-            {/* Pantry */}
-            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
-              <button 
-                onClick={() => toggleSection('pantry')}
-                className="w-full flex items-center justify-between p-6 hover:bg-amber-50 transition-colors border-b-4 border-black"
-              >
-                <div className="flex items-center gap-2">
-                  <CookingPot className="w-5 h-5 text-amber-500" />
-                  <h2 className="text-xl font-black uppercase tracking-tighter">Pantry Basics</h2>
-                </div>
-                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.pantry ? '' : 'rotate-180'}`} />
-              </button>
+            <PantrySection 
+              pantry={pantry}
+              collapsed={collapsed.pantry}
+              toggleSection={() => toggleSection('pantry')}
+              newPantryItem={newPantryItem}
+              setNewPantryItem={setNewPantryItem}
+              addPantry={addPantry}
+              removePantry={removePantry}
+            />
 
-              <AnimatePresence>
-                {!collapsed.pantry && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pt-6 pb-6"
-                  >
-                    <div className="flex gap-2 mb-4">
-                      <input
-                        type="text"
-                        value={newPantryItem}
-                        onChange={(e) => setNewPantryItem(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addPantry()}
-                        placeholder="Basic (e.g. Olive Oil)"
-                        className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-amber-50 font-bold"
-                      />
-                      <button 
-                        onClick={addPantry}
-                        className="p-3 bg-black text-white hover:bg-amber-500 rounded-none transition-colors border-2 border-black"
-                      >
-                        <Plus className="w-6 h-6" />
-                      </button>
-                    </div>
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                      {pantry.map(item => (
-                        <div key={item.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
-                          <span className="font-bold">{item.name}</span>
-                          <button onClick={() => removePantry(item.id)} className="text-slate-400 hover:text-red-600 transition-colors">
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </div>
-                      ))}
-                      {pantry.length === 0 && <p className="text-sm text-slate-400 italic font-bold">No pantry basics added.</p>}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </section>
+            <ProteinSection 
+              proteinPreferences={proteinPreferences}
+              setProteinPreferences={setProteinPreferences}
+            />
 
-            {/* Proteins */}
-            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
-              <div className="p-6 border-b-4 border-black bg-rose-50">
-                <div className="flex items-center gap-2">
-                  <UtensilsCrossed className="w-5 h-5 text-rose-500" />
-                  <h2 className="text-xl font-black uppercase tracking-tighter">Proteins</h2>
-                </div>
-              </div>
-              <div className="p-6 space-y-4">
-                {Object.entries(proteinPreferences).map(([protein, count]) => (
-                  <div key={protein} className="flex items-center justify-between gap-4">
-                    <label className="text-sm font-black uppercase tracking-widest text-black flex-1">
-                      {protein}
-                    </label>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setProteinPreferences(prev => ({
-                          ...prev,
-                          [protein]: Math.max(0, prev[protein] - 1)
-                        }))}
-                        className="w-8 h-8 flex items-center justify-center bg-white border-2 border-black hover:bg-rose-100 transition-colors font-black"
-                      >
-                        -
-                      </button>
-                      <input
-                        type="number"
-                        min="0"
-                        value={count}
-                        onChange={(e) => {
-                          const val = parseInt(e.target.value) || 0;
-                          setProteinPreferences(prev => ({
-                            ...prev,
-                            [protein]: Math.max(0, val)
-                          }));
-                        }}
-                        className="w-12 text-center py-1 bg-white border-2 border-black font-bold focus:outline-none focus:bg-rose-50"
-                      />
-                      <button
-                        onClick={() => setProteinPreferences(prev => ({
-                          ...prev,
-                          [protein]: prev[protein] + 1
-                        }))}
-                        className="w-8 h-8 flex items-center justify-center bg-white border-2 border-black hover:bg-rose-100 transition-colors font-black"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                ))}
-                <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider pt-2 border-t-2 border-slate-100 italic">
-                  Total meals to generate: {(Object.values(proteinPreferences) as number[]).reduce((a, b) => a + b, 0)}
-                </p>
-              </div>
-            </section>
+            <SourceSection 
+              sources={sources}
+              collapsed={collapsed.sources}
+              toggleSection={() => toggleSection('sources')}
+              newSourceName={newSourceName}
+              setNewSourceName={setNewSourceName}
+              newSourceUrl={newSourceUrl}
+              setNewSourceUrl={setNewSourceUrl}
+              addSource={addSource}
+              removeSource={removeSource}
+              quickAddSource={quickAddSource}
+            />
 
-            {/* Recipe Sources */}
-            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
-              <button 
-                onClick={() => toggleSection('sources')}
-                className="w-full flex items-center justify-between p-6 hover:bg-blue-50 transition-colors border-b-4 border-black"
-              >
-                <div className="flex items-center gap-2">
-                  <Globe className="w-5 h-5 text-blue-500" />
-                  <h2 className="text-xl font-black uppercase tracking-tighter">Recipe Sources</h2>
-                </div>
-                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.sources ? '' : 'rotate-180'}`} />
-              </button>
+            <ShoppingSourceSection 
+              shoppingSources={shoppingSources}
+              collapsed={collapsed.shopping}
+              toggleSection={() => toggleSection('shopping')}
+              zipCode={zipCode}
+              setZipCode={setZipCode}
+              searchStores={searchStores}
+              isSearchingStores={isSearchingStores}
+              quotaCooldown={quotaCooldown}
+              removeShoppingSource={removeShoppingSource}
+              newShopName={newShopName}
+              setNewShopName={setNewShopName}
+              newShopUrl={newShopUrl}
+              setNewShopUrl={setNewShopUrl}
+              addShoppingSource={addShoppingSource}
+            />
 
-              <AnimatePresence>
-                {!collapsed.sources && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pt-6 pb-6"
-                  >
-                    <div className="space-y-2 mb-4">
-                      <input
-                        type="text"
-                        value={newSourceName}
-                        onChange={(e) => setNewSourceName(e.target.value)}
-                        placeholder="Source Name (e.g. NYT Cooking)"
-                        className="w-full px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-blue-50 font-bold"
-                      />
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={newSourceUrl}
-                          onChange={(e) => setNewSourceUrl(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && addSource()}
-                          placeholder="Website URL"
-                          className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-blue-50 font-bold"
-                        />
-                        <button 
-                          onClick={addSource}
-                          className="p-3 bg-black text-white hover:bg-blue-500 rounded-none transition-colors border-2 border-black"
-                        >
-                          <Plus className="w-5 h-5" />
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 mb-4">
-                      <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider w-full">Quick Add:</span>
-                      {[
-                        { name: 'Bon Apetite', url: 'https://www.bonappetit.com/recipes' },
-                        { name: 'Food Wishes', url: 'https://foodwishes.blogspot.com/' },
-                        { name: 'Serious Eats', url: 'https://www.seriouseats.com/recipes-by-course-5117906' },
-                        { name: 'Budget Bytes', url: 'https://www.budgetbytes.com/category/recipes/' },
-                        { name: 'Hello Fresh', url: 'https://www.hellofresh.com/recipes' },
-                        { name: 'Blue Apron', url: 'https://www.blueapron.com/cookbook' },
-                        { name: 'Americas Test Kitchen', url: 'https://www.americastestkitchen.com/recipes' },
-                        { name: 'NYT Cooking', url: 'https://cooking.nytimes.com/topics/dinner-recipes' },
-                        { name: 'Whole30', url: 'https://whole30.com/recipes' },
-                        { name: 'Jenn Eats Goood', url: 'https://jenneatsgoood.com/recipes/' }
-                      ].map(qa => {
-                        const isActive = sources.some(s => s.url === qa.url);
-                        return (
-                          <button 
-                            key={qa.url}
-                            onClick={() => quickAddSource(qa.name, qa.url)}
-                            className={`text-[10px] px-3 py-1 rounded-none border-2 border-black transition-all font-black uppercase tracking-widest ${
-                              isActive 
-                                ? 'bg-sky-400 text-black' 
-                                : 'bg-white text-black hover:bg-sky-400 hover:text-black'
-                            }`}
-                          >
-                            {qa.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    <div className="space-y-2 max-h-48 overflow-y-auto pr-2">
-                      {sources
-                        .filter(source => ![
-                          'https://www.bonappetit.com/recipes',
-                          'https://foodwishes.blogspot.com/',
-                          'https://www.seriouseats.com/recipes-by-course-5117906',
-                          'https://www.budgetbytes.com/category/recipes/',
-                          'https://www.hellofresh.com/recipes',
-                          'https://www.blueapron.com/cookbook',
-                          'https://www.americastestkitchen.com/recipes',
-                          'https://cooking.nytimes.com/topics/dinner-recipes',
-                          'https://whole30.com/recipes',
-                          'https://jenneatsgoood.com/recipes/'
-                        ].includes(source.url))
-                        .map(source => (
-                        <div key={source.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium">{source.name}</span>
-                            <span className="text-[10px] text-slate-400 truncate max-w-[150px]">{source.url}</span>
-                          </div>
-                          <button onClick={() => removeSource(source.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      ))}
-                      {sources.length === 0 && <p className="text-xs text-slate-400 italic">No sources added.</p>}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </section>
-
-            {/* Shopping Sources */}
-            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
-              <button 
-                onClick={() => toggleSection('shopping')}
-                className="w-full flex items-center justify-between p-6 hover:bg-purple-50 transition-colors border-b-4 border-black"
-              >
-                <div className="flex items-center gap-2">
-                  <ShoppingCart className="w-5 h-5 text-purple-500" />
-                  <h2 className="text-xl font-black uppercase tracking-tighter">Shopping Sources</h2>
-                </div>
-                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.shopping ? '' : 'rotate-180'}`} />
-              </button>
-
-              <AnimatePresence>
-                {!collapsed.shopping && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pt-6 pb-6"
-                  >
-                    <div className="space-y-4">
-                      <div className="flex gap-2">
-                        <input
-                          type="text"
-                          value={zipCode}
-                          onChange={(e) => setZipCode(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && searchStores()}
-                          placeholder="Zip"
-                          className="w-24 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 font-bold"
-                        />
-                        <button 
-                          onClick={searchStores}
-                          disabled={isSearchingStores || quotaCooldown !== null}
-                          className="px-6 bg-black text-white hover:bg-purple-500 rounded-none transition-colors border-2 border-black font-black uppercase tracking-widest disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {isSearchingStores ? <Loader2 className="w-5 h-5 animate-spin" /> : (quotaCooldown !== null ? `${quotaCooldown}s` : 'Find Stores')}
-                        </button>
-                      </div>
-
-                      {shoppingSources.length > 0 && (
-                        <div className="space-y-2 max-h-64 overflow-y-auto pr-2">
-                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Stores near {zipCode}:</p>
-                          {shoppingSources.map(source => (
-                            <div key={source.id} className="flex items-center justify-between group bg-white px-4 py-3 rounded-none border-2 border-black hover:bg-slate-50 transition-all">
-                              <div className="flex flex-col">
-                                <span className="text-sm font-medium">{source.name}</span>
-                                <a 
-                                  href={source.url} 
-                                  target="_blank" 
-                                  rel="noreferrer" 
-                                  className="text-[10px] text-purple-500 hover:underline truncate max-w-[200px]"
-                                >
-                                  Weekly Sales Link
-                                </a>
-                              </div>
-                              <button onClick={() => removeShoppingSource(source.id)} className="text-slate-400 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      {shoppingSources.length === 0 && !isSearchingStores && (
-                        <p className="text-xs text-slate-400 italic text-center py-4">Enter your zip code to find local grocery stores and their weekly sales.</p>
-                      )}
-
-                      <div className="pt-4 border-t-2 border-slate-100">
-                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2">Add Store Manually:</p>
-                        <div className="space-y-2">
-                          <input
-                            type="text"
-                            value={newShopName}
-                            onChange={(e) => setNewShopName(e.target.value)}
-                            placeholder="Store Name (e.g. Whole Foods)"
-                            className="w-full px-4 py-2 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 text-sm font-bold"
-                          />
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={newShopUrl}
-                              onChange={(e) => setNewShopUrl(e.target.value)}
-                              placeholder="Weekly Sales URL"
-                              className="flex-1 px-4 py-2 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-purple-50 text-sm font-bold"
-                            />
-                            <button 
-                              onClick={addShoppingSource}
-                              className="px-4 bg-purple-500 text-white hover:bg-purple-600 rounded-none transition-colors border-2 border-black font-black uppercase text-xs"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </section>
-
-            {/* Allergies */}
-            <section className="bg-white rounded-none shadow-none border-4 border-black overflow-hidden">
-              <button 
-                onClick={() => toggleSection('allergies')}
-                className="w-full flex items-center justify-between p-6 hover:bg-orange-50 transition-colors border-b-4 border-black"
-              >
-                <div className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-orange-500" />
-                  <h2 className="text-xl font-black uppercase tracking-tighter">Allergies</h2>
-                </div>
-                <ChevronDown className={`w-6 h-6 text-black transition-transform ${collapsed.allergies ? '' : 'rotate-180'}`} />
-              </button>
-
-              <AnimatePresence>
-                {!collapsed.allergies && (
-                  <motion.div 
-                    initial={{ height: 0, opacity: 0 }}
-                    animate={{ height: 'auto', opacity: 1 }}
-                    exit={{ height: 0, opacity: 0 }}
-                    className="px-6 pt-6 pb-6"
-                  >
-                    <div className="flex gap-2 mb-4">
-                      <input
-                        type="text"
-                        value={newAllergy}
-                        onChange={(e) => setNewAllergy(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && addAllergy()}
-                        placeholder="Avoid (e.g. Peanuts)"
-                        className="flex-1 px-4 py-3 bg-white border-2 border-black rounded-none focus:outline-none focus:bg-orange-50 font-bold"
-                      />
-                      <button 
-                        onClick={addAllergy}
-                        className="p-3 bg-black text-white hover:bg-orange-500 rounded-none transition-colors border-2 border-black"
-                      >
-                        <Plus className="w-5 h-5" />
-                      </button>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {allergies.map(allergy => (
-                        <div key={allergy.id} className="flex items-center gap-1 bg-orange-50 text-orange-700 px-3 py-1 rounded-none text-xs font-black uppercase tracking-widest border-2 border-orange-500">
-                          {allergy.ingredient}
-                          <button onClick={() => removeAllergy(allergy.id)} className="hover:text-orange-900">
-                            <Plus className="w-3 h-3 rotate-45" />
-                          </button>
-                        </div>
-                      ))}
-                      {allergies.length === 0 && <p className="text-xs text-slate-400 italic">No allergies listed.</p>}
-                    </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </section>
+            <AllergySection 
+              allergies={allergies}
+              collapsed={collapsed.allergies}
+              toggleSection={() => toggleSection('allergies')}
+              newAllergy={newAllergy}
+              setNewAllergy={setNewAllergy}
+              addAllergy={addAllergy}
+              removeAllergy={removeAllergy}
+            />
 
             {/* Actions Section */}
             <div className="space-y-4 pt-4">
@@ -1700,131 +1187,18 @@ export default function App() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <AnimatePresence mode="popLayout">
                   {mealIdeas.map((meal, index) => (
-                    <motion.div
+                    <MealIdeaCard 
                       key={meal.id}
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      onClick={() => toggleMealSelection(meal.id)}
-                      className={`relative cursor-pointer group p-6 rounded-none border-4 transition-all ${
-                        selectedMealIds.includes(meal.id)
-                          ? 'bg-emerald-50 border-emerald-500 shadow-[4px_4px_0px_0px_rgba(16,185,129,1)]'
-                          : 'bg-white border-black hover:border-emerald-500 hover:shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start mb-2">
-                        <div className="pr-6">
-                          <div className="flex items-center gap-2">
-                            <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
-                            {user && (
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleFavorite(meal);
-                                }}
-                                className={`p-1 rounded-full transition-colors ${
-                                  favorites.some(f => f.name === meal.name)
-                                    ? 'text-amber-500 hover:bg-amber-50'
-                                    : 'text-slate-300 hover:text-amber-400 hover:bg-slate-50'
-                                }`}
-                              >
-                                <Star className={`w-4 h-4 ${favorites.some(f => f.name === meal.name) ? 'fill-current' : ''}`} />
-                              </button>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-1">
-                            <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">Est. ${meal.estimatedCost}</span>
-                            <div className="flex items-center gap-1 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                              <Clock className="w-3 h-3" />
-                              <span>Prep: {meal.prepTime}</span>
-                              <span className="mx-1">•</span>
-                              <span>Cook: {meal.cookTime}</span>
-                            </div>
-                          </div>
-                        </div>
-                        {selectedMealIds.includes(meal.id) && (
-                          <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
-                        )}
-                      </div>
-                      <p className="text-sm text-slate-600 line-clamp-2 mb-3">{meal.description}</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {meal.ingredients.slice(0, 3).map((ing, i) => (
-                          <span key={i} className="text-[10px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded uppercase tracking-wider font-semibold">
-                            {ing.name}
-                          </span>
-                        ))}
-                        {meal.ingredients.length > 3 && (
-                          <span className="text-[10px] text-slate-400 italic">+{meal.ingredients.length - 3} more</span>
-                        )}
-                      </div>
-                      <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between">
-                        {meal.sourceUrl ? (
-                          <div className="flex items-center gap-1 text-[10px] text-blue-500 font-medium uppercase tracking-widest">
-                            <Globe className="w-3 h-3" />
-                            <a 
-                              href={meal.sourceUrl} 
-                              target="_blank" 
-                              rel="noreferrer" 
-                              onClick={(e) => e.stopPropagation()}
-                              className="hover:underline"
-                            >
-                              Recipe Link
-                            </a>
-                          </div>
-                        ) : (
-                          <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium uppercase tracking-widest italic">
-                            <Globe className="w-3 h-3 opacity-50" />
-                            <span>No direct link</span>
-                          </div>
-                        )}
-
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400 font-medium uppercase tracking-widest">
-                          <Search className="w-3 h-3" />
-                          <a 
-                            href={`https://www.google.com/search?q=${encodeURIComponent(meal.name + ' recipe')}`}
-                            target="_blank" 
-                            rel="noreferrer" 
-                            onClick={(e) => e.stopPropagation()}
-                            className="hover:underline"
-                          >
-                            Search
-                          </a>
-                        </div>
-                        
-                        <div className="relative">
-                          <button
-                            onMouseEnter={() => setHoveredRecipeId(meal.id)}
-                            onMouseLeave={() => setHoveredRecipeId(null)}
-                            onClick={(e) => e.stopPropagation()}
-                            className="flex items-center gap-1 text-[10px] bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded font-bold uppercase tracking-wider transition-colors"
-                          >
-                            <Eye className="w-3 h-3" />
-                            Preview
-                          </button>
-                          
-                          <AnimatePresence>
-                            {hoveredRecipeId === meal.id && (
-                              <motion.div
-                                initial={{ opacity: 0, scale: 0.95, y: 10 }}
-                                animate={{ opacity: 1, scale: 1, y: 0 }}
-                                exit={{ opacity: 0, scale: 0.95, y: 10 }}
-                                className="absolute bottom-full right-0 mb-2 w-64 bg-white border-4 border-black rounded-none shadow-[8px_8px_0px_0px_rgba(0,0,0,1)] p-6 z-50 pointer-events-none"
-                              >
-                                <h4 className="text-xs font-bold text-slate-900 uppercase tracking-widest mb-2 pb-2 border-bottom border-slate-100">Quick Instructions</h4>
-                                <div className="space-y-2 max-h-48 overflow-y-auto pr-2 custom-scrollbar">
-                                  {meal.instructions.map((step, i) => (
-                                    <div key={i} className="flex gap-2 text-[11px] text-slate-600 leading-relaxed">
-                                      <span className="font-bold text-emerald-500">{i + 1}.</span>
-                                      <span>{step}</span>
-                                    </div>
-                                  ))}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    </motion.div>
+                      meal={meal}
+                      index={index}
+                      user={user}
+                      favorites={favorites}
+                      selectedMealIds={selectedMealIds}
+                      toggleMealSelection={toggleMealSelection}
+                      toggleFavorite={toggleFavorite}
+                      hoveredRecipeId={hoveredRecipeId}
+                      setHoveredRecipeId={setHoveredRecipeId}
+                    />
                   ))}
                 </AnimatePresence>
                 
@@ -1891,400 +1265,42 @@ export default function App() {
 
             {/* Shopping List Section */}
             {selectedMealIds.length > 0 && (
-              <motion.section
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="bg-black text-white rounded-none p-10 border-4 border-emerald-500 shadow-[10px_10px_0px_0px_rgba(16,185,129,1)]"
-              >
-                <div className="flex items-center gap-4 mb-10">
-                  <div className="p-4 bg-emerald-500 rounded-none">
-                    <ShoppingCart className="w-8 h-8 text-white" />
-                  </div>
-                  <div>
-                    <h2 className="text-4xl font-black uppercase tracking-tighter">Shopping List</h2>
-                    <p className="text-emerald-400 text-sm font-bold uppercase tracking-widest">Based on {selectedMealIds.length} selected meals</p>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                  {/* To Buy */}
-                  <div>
-                    <h3 className="text-emerald-400 text-xs font-bold uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
-                      Need to Buy
-                      <span className="h-px flex-1 bg-emerald-400/20"></span>
-                    </h3>
-                    <ul className="space-y-4">
-                      {shoppingList.toBuy.map((item, i) => (
-                        <li 
-                          key={i} 
-                          className="grid grid-cols-[1fr_auto] items-center gap-4 group relative"
-                          onMouseEnter={() => setHoveredIngredient(item.name)}
-                          onMouseLeave={() => setHoveredIngredient(null)}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-                            <span className="font-medium">{item.name}</span>
-                          </div>
-                          <span className="text-slate-500 text-sm font-mono text-right">{item.amount}</span>
-                          
-                          <AnimatePresence>
-                            {hoveredIngredient === item.name && (
-                              <motion.div
-                                initial={{ opacity: 0, x: 10 }}
-                                animate={{ opacity: 1, x: 0 }}
-                                exit={{ opacity: 0, x: 10 }}
-                                className="absolute left-full ml-4 top-1/2 -translate-y-1/2 bg-black border-4 border-emerald-500 rounded-none p-4 z-50 w-64 shadow-[8px_8px_0px_0px_rgba(16,185,129,1)] pointer-events-none"
-                              >
-                                {item.onSaleAt && (
-                                  <div className="mb-3 pb-2 border-b border-emerald-500/30">
-                                    <p className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest mb-0.5">Special Offer:</p>
-                                    <p className="text-[11px] text-white font-bold italic">On sale at {item.onSaleAt}</p>
-                                  </div>
-                                )}
-                                <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-widest mb-1.5">Used In:</p>
-                                <div className="space-y-1">
-                                  {item.meals.map((mealName, idx) => (
-                                    <p key={idx} className="text-[11px] text-slate-200 leading-tight">• {mealName}</p>
-                                  ))}
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </li>
-                      ))}
-                      {shoppingList.toBuy.length === 0 && (
-                        <p className="text-slate-500 italic text-sm">Everything is in your inventory!</p>
-                      )}
-                    </ul>
-                  </div>
-
-                  {/* From Inventory */}
-                  <div>
-                    <h3 className="text-slate-400 text-xs font-bold uppercase tracking-[0.2em] mb-6 flex items-center gap-2">
-                      Using from Inventory/Pantry
-                      <span className="h-px flex-1 bg-slate-400/20"></span>
-                    </h3>
-                    <ul className="space-y-4">
-                      {shoppingList.fromInventory.map((item, i) => (
-                        <li key={i} className="flex flex-col gap-1 opacity-60">
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <CheckCircle2 className="w-4 h-4 text-slate-500" />
-                              <span className="font-medium line-through">{item.name}</span>
-                            </div>
-                            <span className="text-slate-500 text-sm font-mono">{item.amount}</span>
-                          </div>
-                          {item.meals.length > 1 && !item.isPantry && (
-                            <div className="ml-7 flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
-                              <span className="text-amber-500">⚠️ Confirm Quantity! Used in Multiple Meals.</span>
-                              <button 
-                                onClick={() => setManuallyAddedToBuy(prev => [...prev, item.name])}
-                                className="text-emerald-500 hover:underline"
-                              >
-                                Add to Shopping List?
-                              </button>
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                      {shoppingList.fromInventory.length === 0 && (
-                        <p className="text-slate-500 italic text-sm">No inventory/pantry items used.</p>
-                      )}
-                    </ul>
-                  </div>
-                </div>
-
-                <div className="mt-12 pt-8 border-t border-slate-800 space-y-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="space-y-1">
-                      <div className="text-sm text-slate-400">
-                        Total unique ingredients: {new Set([...shoppingList.toBuy, ...shoppingList.fromInventory].map(i => i.name)).size}
-                      </div>
-                      <div className="text-xl font-bold text-emerald-400 flex items-center gap-2">
-                        Estimated Weekly Cost: ${shoppingList.totalEstimatedCost.toFixed(2)}
-                        <span className="text-[10px] text-slate-500 font-normal uppercase tracking-widest">(Ref. Grocery Sources)</span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button 
-                        onClick={() => setIsEmailModalOpen(true)}
-                        className="bg-white text-black px-6 py-3 rounded-none border-4 border-black font-black uppercase tracking-widest text-sm hover:bg-emerald-50 transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-                      >
-                        Email List
-                        <Mail className="w-4 h-4" />
-                      </button>
-                      {user && (
-                        <button 
-                          onClick={saveMealPlan}
-                          disabled={isSaving}
-                          className="bg-emerald-500 text-white px-6 py-3 rounded-none border-4 border-black font-black uppercase tracking-widest text-sm hover:bg-black transition-all shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:opacity-50"
-                        >
-                          Save Meal Plan
-                          {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Calendar className="w-4 h-4" />}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  
-                  {shoppingSources.length > 0 && (
-                    <div className="bg-black p-6 rounded-none border-4 border-emerald-500 shadow-[6px_6px_0px_0px_rgba(16,185,129,1)]">
-                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-4">Reference Stores & Sale Items:</p>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {shoppingSources.map(s => {
-                          const itemsOnSale = shoppingList.toBuy.filter(item => item.onSaleAt === s.name);
-                          return (
-                            <div key={s.id} className="space-y-3">
-                              <a href={s.url} target="_blank" rel="noreferrer" className="text-xs text-emerald-400 hover:underline flex items-center gap-1 font-black uppercase tracking-wider">
-                                <Globe className="w-3 h-3" />
-                                {s.name}
-                              </a>
-                              {itemsOnSale.length > 0 ? (
-                                <ul className="space-y-1">
-                                  {itemsOnSale.map((item, idx) => (
-                                    <li key={idx} className="text-[10px] text-yellow-400 font-bold flex items-center gap-2">
-                                      <span className="w-1 h-1 bg-yellow-400 rounded-full" />
-                                      {item.name} ({item.amount})
-                                    </li>
-                                  ))}
-                                </ul>
-                              ) : (
-                                <p className="text-[9px] text-slate-600 italic">No specific sale items identified.</p>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </motion.section>
+              <ShoppingListSection 
+                shoppingList={shoppingList}
+                manuallyAddedToBuy={manuallyAddedToBuy}
+                setManuallyAddedToBuy={setManuallyAddedToBuy}
+                hoveredIngredient={hoveredIngredient}
+                setHoveredIngredient={setHoveredIngredient}
+                saveMealPlan={saveMealPlan}
+                isSaving={isSaving}
+                setIsEmailModalOpen={setIsEmailModalOpen}
+                user={user}
+                shoppingSources={shoppingSources}
+              />
             )}
           </div>
         </div>
       )}
 
         {activePage === 'meal-plan' && (
-          <div className="space-y-12">
-            <section>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                  <Calendar className="w-6 h-6 text-emerald-600" />
-                  Current Week
-                </h2>
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                  {mealPlan.filter(m => m.is_current).length} Meals
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {mealPlan.filter(m => m.is_current).map((meal, i) => (
-                  <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] transition-all">
-                    <div className="flex justify-between items-start mb-4">
-                      <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
-                      <button
-                        onClick={() => toggleFavorite(meal)}
-                        className={`p-1 rounded-full transition-colors ${
-                          favorites.some(f => f.name === meal.name)
-                            ? 'text-amber-500 hover:bg-amber-50'
-                            : 'text-slate-300 hover:text-amber-400 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Star className={`w-4 h-4 ${favorites.some(f => f.name === meal.name) ? 'fill-current' : ''}`} />
-                      </button>
-                    </div>
-                    <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
-                    
-                    {meal.sourceUrl && (
-                      <div className="mb-4">
-                        <a 
-                          href={meal.sourceUrl} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
-                        >
-                          <Globe className="w-3 h-3" />
-                          Recipe Link
-                        </a>
-                      </div>
-                    )}
-
-                    <div className="mb-6 space-y-3">
-                      <button
-                        onClick={() => markMealAsCooked(meal)}
-                        className="w-full py-3 bg-emerald-500 text-white font-black uppercase tracking-widest text-xs border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
-                      >
-                        Meal Cooked!
-                      </button>
-                      <button
-                        onClick={() => markMealAsNotCooked(meal)}
-                        className="w-full py-3 bg-red-500 text-white font-black uppercase tracking-widest text-xs border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-black transition-all active:translate-x-[1px] active:translate-y-[1px] active:shadow-none"
-                      >
-                        Meal not cooked!
-                      </button>
-                      <p className="text-[10px] text-slate-400 font-bold mt-2 italic">
-                        Marking a meal as cooked will remove relevant items from your inventory.
-                      </p>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                      <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">${meal.estimatedCost}</span>
-                      <div className="flex items-center gap-2 text-[10px] text-slate-400 font-bold uppercase tracking-wider">
-                        <Clock className="w-3 h-3" />
-                        {meal.prepTime} + {meal.cookTime}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-                {mealPlan.filter(m => m.is_current).length === 0 && (
-                  <div className="col-span-full py-12 text-center bg-slate-50 rounded-none border-4 border-dashed border-black">
-                    <p className="text-slate-400 italic">No meals planned for this week yet.</p>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <section>
-              <div className="flex items-center justify-between mb-6">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                  <History className="w-6 h-6 text-slate-400" />
-                  Previous Meals
-                </h2>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 opacity-75">
-                {mealPlan.filter(m => !m.is_current).map((meal, i) => (
-                  <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] grayscale-[0.5] relative">
-                    <div className="flex justify-between items-start mb-2">
-                      <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
-                      <button
-                        onClick={() => toggleFavorite(meal)}
-                        className={`p-1 rounded-full transition-colors ${
-                          favorites.some(f => f.name === meal.name)
-                            ? 'text-amber-500 hover:bg-amber-50'
-                            : 'text-slate-300 hover:text-amber-400 hover:bg-slate-50'
-                        }`}
-                      >
-                        <Star className={`w-4 h-4 ${favorites.some(f => f.name === meal.name) ? 'fill-current' : ''}`} />
-                      </button>
-                    </div>
-                    <p className="text-sm text-slate-500 line-clamp-2 mb-4">{meal.description}</p>
-                    
-                    {meal.sourceUrl && (
-                      <div className="mb-4">
-                        <a 
-                          href={meal.sourceUrl} 
-                          target="_blank" 
-                          rel="noreferrer"
-                          className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
-                        >
-                          <Globe className="w-3 h-3" />
-                          Recipe Link
-                        </a>
-                      </div>
-                    )}
-
-                    <div className="flex flex-col gap-2 pt-4 border-t border-slate-100">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">${meal.estimatedCost}</span>
-                        <div className="relative">
-                          <input
-                            type="date"
-                            className="absolute inset-0 opacity-0 cursor-pointer"
-                            value={(() => {
-                              const d = new Date(meal.planned_at);
-                              const year = d.getUTCFullYear();
-                              const month = String(d.getUTCMonth() + 1).padStart(2, '0');
-                              const day = String(d.getUTCDate()).padStart(2, '0');
-                              return `${year}-${month}-${day}`;
-                            })()}
-                            onChange={(e) => updateMealPlannedAt(meal, e.target.value)}
-                          />
-                          <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider hover:text-emerald-600 transition-colors">
-                            Planned: {new Date(meal.planned_at).toLocaleDateString(undefined, { timeZone: 'UTC' })}
-                          </span>
-                        </div>
-                      </div>
-                      {meal.did_not_cook && (
-                        <span className="text-[10px] text-red-500 font-bold uppercase tracking-wider">
-                          ❌ Did not cook
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-                {mealPlan.filter(m => !m.is_current).length === 0 && (
-                  <p className="text-slate-400 italic px-4">No previous meals found.</p>
-                )}
-              </div>
-            </section>
-          </div>
+          <MealPlanSection 
+            mealPlan={mealPlan}
+            favorites={favorites}
+            toggleFavorite={toggleFavorite}
+            markMealAsCooked={markMealAsCooked}
+            markMealAsNotCooked={markMealAsNotCooked}
+            updateMealPlannedAt={updateMealPlannedAt}
+          />
         )}
 
         {activePage === 'favorites' && (
-          <div className="space-y-8">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-bold flex items-center gap-2">
-                <Heart className="w-6 h-6 text-red-500 fill-current" />
-                Your Favorites
-              </h2>
-              <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">
-                {favorites.length} Saved
-              </span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {favorites.map((meal, i) => (
-                <div key={i} className="bg-white p-8 rounded-none border-4 border-black shadow-[6px_6px_0px_0px_rgba(0,0,0,1)] hover:shadow-[10px_10px_0px_0px_rgba(0,0,0,1)] transition-all group">
-                  <div className="flex justify-between items-start mb-4">
-                    <h3 className="font-bold text-lg leading-tight">{meal.name}</h3>
-                    <button
-                      onClick={() => toggleFavorite(meal)}
-                      className="p-1 rounded-full text-amber-500 hover:bg-amber-50 transition-colors"
-                    >
-                      <Star className="w-4 h-4 fill-current" />
-                    </button>
-                  </div>
-                  <p className="text-sm text-slate-600 line-clamp-2 mb-4">{meal.description}</p>
-                  
-                  {meal.sourceUrl && (
-                    <div className="mb-4">
-                      <a 
-                        href={meal.sourceUrl} 
-                        target="_blank" 
-                        rel="noreferrer"
-                        className="text-xs font-bold text-emerald-600 hover:underline flex items-center gap-1"
-                      >
-                        <Globe className="w-3 h-3" />
-                        Recipe Link
-                      </a>
-                    </div>
-                  )}
-
-                  <div className="flex items-center justify-between pt-4 border-t border-slate-100">
-                    <span className="text-xs font-bold text-emerald-600 uppercase tracking-widest">${meal.estimatedCost}</span>
-                    <button 
-                      onClick={() => {
-                        setMealIdeas([meal, ...mealIdeas.filter(m => m.name !== meal.name)]);
-                        setActivePage('home');
-                      }}
-                      className="text-[10px] bg-emerald-50 text-emerald-600 px-2 py-1 rounded font-bold uppercase tracking-wider hover:bg-emerald-100 transition-colors"
-                    >
-                      Add to Plan
-                    </button>
-                  </div>
-                </div>
-              ))}
-              {favorites.length === 0 && (
-                <div className="col-span-full py-20 text-center bg-slate-50 rounded-none border-4 border-dashed border-black">
-                  <Heart className="w-12 h-12 text-slate-200 mx-auto mb-4" />
-                  <p className="text-slate-400 italic">You haven't favorited any meals yet.</p>
-                  <button 
-                    onClick={() => setActivePage('home')}
-                    className="mt-4 text-emerald-600 font-bold hover:underline text-sm"
-                  >
-                    Go discover some meals
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
+          <FavoritesSection 
+            favorites={favorites}
+            toggleFavorite={toggleFavorite}
+            setMealIdeas={setMealIdeas}
+            mealIdeas={mealIdeas}
+            setActivePage={setActivePage}
+          />
         )}
         </main>
       </div>
